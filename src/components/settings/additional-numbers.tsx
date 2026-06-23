@@ -165,9 +165,9 @@ export function AdditionalNumbers() {
               ))}
             </div>
 
-            {/* Adicionar / aviso de limite */}
-            {canAdd ? (
-              showForm ? (
+            {/* Adicionar número — botão sempre visível; desabilitado quando
+                bate o limite (a pessoa vê que existe e pede liberação). */}
+            {showForm && canAdd ? (
                 <form onSubmit={handleAdd} className="flex flex-col gap-3 rounded-lg border border-border p-3">
                   <p className="text-sm font-medium text-foreground">Novo número via Evolution</p>
                   <div className="flex flex-col gap-1.5">
@@ -195,15 +195,25 @@ export function AdditionalNumbers() {
                     </Button>
                   </div>
                 </form>
-              ) : (
-                <Button variant="outline" onClick={() => setShowForm(true)} className="w-fit">
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowForm(true)}
+                  disabled={!canAdd}
+                  className="w-fit"
+                  title={
+                    !canAdd ? 'Limite atingido — peça a liberação à ADSon' : undefined
+                  }
+                >
                   <Plus className="size-4" /> Adicionar número
                 </Button>
-              )
-            ) : (
-              <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
-                Limite de {limit} número(s) atingido. Para conectar mais números,
-                contrate um número adicional.
+                {!canAdd && (
+                  <p className="text-xs text-amber-300/90">
+                    Você já usa o máximo de números do seu plano ({limit}). Para
+                    conectar mais, peça a liberação à ADSon.
+                  </p>
+                )}
               </div>
             )}
           </>
