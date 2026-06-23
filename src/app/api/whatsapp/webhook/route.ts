@@ -25,7 +25,7 @@ function supabaseAdmin() {
   return _adminClient
 }
 
-interface WhatsAppMessage {
+export interface WhatsAppMessage {
   id: string
   from: string
   timestamp: string
@@ -275,7 +275,8 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           // inserts that need it for NOT NULL FK compliance. Always
           // the admin who saved the WhatsApp config.
           config.user_id,
-          decryptedAccessToken
+          decryptedAccessToken,
+          config.id,
         )
       }
     }
@@ -498,7 +499,7 @@ async function handleReaction(
   }
 }
 
-async function processMessage(
+export async function processMessage(
   message: WhatsAppMessage,
   contact: { profile: { name: string }; wa_id: string },
   // Tenancy. Resolved from the matched whatsapp_config row; every
@@ -509,7 +510,8 @@ async function processMessage(
   // (contacts, conversations). Always the admin who saved the
   // WhatsApp config; the choice is arbitrary post-017 but stable.
   configOwnerUserId: string,
-  accessToken: string
+  accessToken: string,
+  whatsappConfigId: string,
 ) {
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
@@ -528,7 +530,8 @@ async function processMessage(
   const conversation = await findOrCreateConversation(
     accountId,
     configOwnerUserId,
-    contactRecord.id
+    contactRecord.id,
+    whatsappConfigId,
   )
   if (!conversation) return
 
@@ -739,7 +742,12 @@ async function parseMessageContent(
     mediaId: string
   ): Promise<string | null> => {
     try {
-      await getMediaUrl({ mediaId, accessToken })
+      const info = await getMediaUrl({ mediaId, accessToken })
+      // [MEDIA-DEBUG TEMP — remover após diagnóstico] confirma que o
+      // EvoHub espelha o endpoint de mídia da Meta (GET /<mediaId>).
+      console.log(
+        `[MEDIA-DEBUG] getMediaUrl OK mediaId=${mediaId} mime=${info.mimeType} url=${(info.url || '').slice(0, 70)}`
+      )
       return `/api/whatsapp/media/${mediaId}`
     } catch (error) {
       console.error(
@@ -757,6 +765,17 @@ async function parseMessageContent(
     mediaUrl: null,
     mediaType: null,
     interactiveReplyId: null,
+  }
+
+  // [MEDIA-DEBUG TEMP — remover após diagnóstico] Captura o payload bruto
+  // de mídia pra ver o formato exato que o EvoHub entrega (id? url? base64?).
+  if (['image', 'audio', 'video', 'document', 'sticker'].includes(message.type)) {
+    try {
+      const mediaPayload = (message as unknown as Record<string, unknown>)[message.type]
+      console.log(`[MEDIA-DEBUG] type=${message.type} payload=${JSON.stringify(mediaPayload)}`)
+    } catch {
+      /* noop */
+    }
   }
 
   switch (message.type) {
@@ -934,6 +953,7 @@ async function findOrCreateConversation(
   accountId: string,
   configOwnerUserId: string,
   contactId: string,
+  whatsappConfigId: string,
 ) {
   // Look for existing conversation in this account
   const { data: existing, error: findError } = await supabaseAdmin()
@@ -955,6 +975,7 @@ async function findOrCreateConversation(
       account_id: accountId,
       user_id: configOwnerUserId,
       contact_id: contactId,
+      whatsapp_config_id: whatsappConfigId,
     })
     .select()
     .single()

@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { MessageTemplate } from "@/types";
+import type { MessageTemplate, Contact, Conversation } from "@/types";
+import {
+  resolveTemplateBodyValues,
+  describeMapping,
+  type ResolveContext,
+  type TemplateVariableMappings,
+  type TemplateVariableMapping,
+} from "@/lib/whatsapp/template-variables";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +40,10 @@ interface TemplatePickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (template: MessageTemplate, values: TemplateSendValues) => void;
+  /** Contato da conversa — usado para auto-preencher variáveis mapeadas. */
+  contact?: Contact | null;
+  /** Conversa atual — usada para localizar o card/deal aberto e seus campos. */
+  conversation?: Conversation | null;
 }
 
 function renderBodyPreview(body: string, params: string[]): string {
@@ -77,6 +88,8 @@ export function TemplatePicker({
   open,
   onOpenChange,
   onSelect,
+  contact,
+  conversation,
 }: TemplatePickerProps) {
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,7 +151,70 @@ export function TemplatePicker({
     onOpenChange(next);
   }
 
-  function pickTemplate(template: MessageTemplate) {
+  /**
+   * Monta o ResolveContext a partir do contato + card/deal aberto da
+   * conversa, buscando os campos personalizados de ambos. Degrada com
+   * graça: sem conversa/contato/deal, devolve um contexto parcial e a
+   * resolução simplesmente cai pra string vazia (preenche na hora).
+   */
+  async function buildResolveContext(): Promise<ResolveContext> {
+    const ctx: ResolveContext = {};
+    if (contact) {
+      ctx.contact = {
+        name: contact.name,
+        phone: contact.phone,
+        email: contact.email,
+        company: contact.company,
+        city: contact.city,
+      };
+    }
+
+    const supabase = createClient();
+
+    // Campos personalizados do contato.
+    if (contact?.id) {
+      const { data: contactValues } = await supabase
+        .from("contact_custom_values")
+        .select("custom_field_id, value")
+        .eq("contact_id", contact.id);
+      if (contactValues?.length) {
+        const map: Record<string, string> = {};
+        for (const row of contactValues) {
+          map[row.custom_field_id] = row.value ?? "";
+        }
+        ctx.contactCustom = map;
+      }
+    }
+
+    // Card/deal mais recente da conversa + seus campos personalizados.
+    if (conversation?.id) {
+      const { data: deals } = await supabase
+        .from("deals")
+        .select("id, title, value")
+        .eq("conversation_id", conversation.id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const deal = deals?.[0];
+      if (deal) {
+        ctx.deal = { title: deal.title, value: deal.value };
+        const { data: dealValues } = await supabase
+          .from("deal_custom_values")
+          .select("deal_custom_field_id, value")
+          .eq("deal_id", deal.id);
+        if (dealValues?.length) {
+          const map: Record<string, string> = {};
+          for (const row of dealValues) {
+            map[row.deal_custom_field_id] = row.value ?? "";
+          }
+          ctx.dealCustom = map;
+        }
+      }
+    }
+
+    return ctx;
+  }
+
+  async function pickTemplate(template: MessageTemplate) {
     const slots = collectVariableSlots(template);
     const noInputsNeeded =
       slots.bodyVars.length === 0 &&
@@ -150,9 +226,34 @@ export function TemplatePicker({
       return;
     }
     setSelected(template);
-    setParams(new Array(slots.bodyVars.length).fill(""));
     setHeaderText("");
     setButtonParams({});
+
+    // Sem variáveis de corpo ou sem mapeamento: começa vazio (preenche
+    // na hora). Com mapeamento, resolve a partir do contato/card.
+    if (slots.bodyVars.length === 0 || !template.variable_mappings) {
+      setParams(new Array(slots.bodyVars.length).fill(""));
+      return;
+    }
+
+    setParams(new Array(slots.bodyVars.length).fill(""));
+    try {
+      const ctx = await buildResolveContext();
+      const resolved = resolveTemplateBodyValues(
+        template.variable_mappings as TemplateVariableMappings,
+        slots.bodyVars.length,
+        ctx,
+      );
+      // Só aplica se o template selecionado ainda é este (o usuário pode
+      // ter voltado/trocado enquanto a busca rodava).
+      setSelected((curr) => {
+        if (curr?.id === template.id) setParams(resolved);
+        return curr;
+      });
+    } catch (err) {
+      console.error("Falha ao auto-preencher variáveis do template:", err);
+      // Mantém os campos vazios — o usuário preenche na hora.
+    }
   }
 
   function confirm() {
@@ -187,12 +288,12 @@ export function TemplatePicker({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-popover-foreground">
             <LayoutTemplate className="h-4 w-4 text-primary" />
-            {selected ? selected.name : "Send template"}
+            {selected ? selected.name : "Enviar template"}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
             {selected
-              ? "Fill in the placeholders to render this template. Meta requires every variable to be set."
-              : "Pick an approved WhatsApp template to send to this contact."}
+              ? "Preencha os campos para renderizar este template. A Meta exige que todas as variáveis sejam definidas."
+              : "Escolha um template do WhatsApp aprovado para enviar a este contato."}
           </DialogDescription>
         </DialogHeader>
 
@@ -204,10 +305,10 @@ export function TemplatePicker({
               </div>
             ) : templates.length === 0 ? (
               <div className="rounded-md border border-border bg-background/50 p-6 text-center">
-                <p className="text-sm text-popover-foreground">No approved templates</p>
+                <p className="text-sm text-popover-foreground">Nenhum template aprovado</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Approve a template in Meta WhatsApp Manager, then sync it
-                  from Settings → Templates.
+                  Aprove um template no Meta WhatsApp Manager e depois
+                  sincronize em Configurações → Templates.
                 </p>
               </div>
             ) : (
@@ -246,7 +347,7 @@ export function TemplatePicker({
         ) : (
           <div className="space-y-3">
             <div className="rounded-md border border-border bg-background/50 p-3">
-              <p className="mb-1 text-xs text-muted-foreground">Preview</p>
+              <p className="mb-1 text-xs text-muted-foreground">Pré-visualização</p>
               <p className="whitespace-pre-wrap text-sm text-popover-foreground">
                 {renderBodyPreview(selected.body_text, params)}
               </p>
@@ -259,35 +360,43 @@ export function TemplatePicker({
             {slots && slots.headerVarCount > 0 && (
               <div className="space-y-1">
                 <Label className="text-xs text-popover-foreground">
-                  {`Header {{1}}`}
+                  {`Cabeçalho {{1}}`}
                 </Label>
                 <Input
                   value={headerText}
                   onChange={(e) => setHeaderText(e.target.value)}
-                  placeholder="Value for the header variable"
+                  placeholder="Valor para a variável do cabeçalho"
                   className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
                 />
               </div>
             )}
-            {slots?.bodyVars.map((v, i) => (
-              <div key={v} className="space-y-1">
-                <Label className="text-xs text-popover-foreground">{`Body {{${v}}}`}</Label>
-                <Input
-                  value={params[i] ?? ""}
-                  onChange={(e) => {
-                    const next = [...params];
-                    next[i] = e.target.value;
-                    setParams(next);
-                  }}
-                  placeholder={`Value for {{${v}}}`}
-                  className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
-                />
-              </div>
-            ))}
+            {slots?.bodyVars.map((v, i) => {
+              const mapping = selected.variable_mappings?.[String(v)];
+              return (
+                <div key={v} className="space-y-1">
+                  <Label className="text-xs text-popover-foreground">{`Corpo {{${v}}}`}</Label>
+                  <Input
+                    value={params[i] ?? ""}
+                    onChange={(e) => {
+                      const next = [...params];
+                      next[i] = e.target.value;
+                      setParams(next);
+                    }}
+                    placeholder={`Valor para {{${v}}}`}
+                    className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+                  />
+                  {mapping && (
+                    <p className="text-xs text-muted-foreground">
+                      {describeMapping(mapping as TemplateVariableMapping)}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
             {slots?.urlButtonSlots.map((slot) => (
               <div key={slot.index} className="space-y-1">
                 <Label className="text-xs text-popover-foreground">
-                  {`URL button "${slot.text}" — value for `}{`{{1}}`}
+                  {`Botão de URL "${slot.text}" — valor para `}{`{{1}}`}
                 </Label>
                 <Input
                   value={buttonParams[slot.index] ?? ""}
@@ -297,11 +406,11 @@ export function TemplatePicker({
                       [slot.index]: e.target.value,
                     }))
                   }
-                  placeholder="URL suffix value"
+                  placeholder="Valor do sufixo da URL"
                   className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
                 />
                 <p className="text-[10px] text-muted-foreground break-all">
-                  Final URL: {slot.url.replace(/\{\{1\}\}/g, buttonParams[slot.index] || "{{1}}")}
+                  URL final: {slot.url.replace(/\{\{1\}\}/g, buttonParams[slot.index] || "{{1}}")}
                 </p>
               </div>
             ))}
@@ -317,14 +426,14 @@ export function TemplatePicker({
                 className="border-border text-popover-foreground hover:bg-muted"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Back
+                Voltar
               </Button>
               <Button
                 disabled={!canConfirm}
                 onClick={confirm}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                Send template
+                Enviar template
               </Button>
             </>
           ) : (
@@ -333,7 +442,7 @@ export function TemplatePicker({
               onClick={() => handleOpenChange(false)}
               className="border-border text-popover-foreground hover:bg-muted"
             >
-              Cancel
+              Cancelar
             </Button>
           )}
         </DialogFooter>

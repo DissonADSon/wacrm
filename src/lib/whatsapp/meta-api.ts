@@ -10,7 +10,12 @@
  */
 
 const META_API_VERSION = 'v21.0'
-const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
+// Base da API WhatsApp. Padrão = Graph oficial da Meta. Para rodar via EvoHub
+// (proxy transparente), defina WHATSAPP_API_BASE=https://api.evohub.ai/meta
+// (SEM o segmento de versão — o Hub abstrai). O caminho e o payload após a
+// base são idênticos aos da Cloud API; o Bearer passa a ser o channel token.
+const META_API_BASE =
+  process.env.WHATSAPP_API_BASE || `https://graph.facebook.com/${META_API_VERSION}`
 
 export interface MetaSendResult {
   messageId: string

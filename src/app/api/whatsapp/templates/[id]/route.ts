@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { resolveWhatsappConfig } from '@/lib/whatsapp/config-resolver'
 import {
   deleteMessageTemplate,
   editMessageTemplate,
@@ -138,18 +138,14 @@ export async function PATCH(
     }
 
     if (!isDryRun()) {
-      const { data: config, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .single()
-      if (configError || !config) {
+      const cfg = await resolveWhatsappConfig(supabase, accountId, {})
+      if (!cfg) {
         return NextResponse.json(
           { error: 'WhatsApp not configured.' },
           { status: 400 },
         )
       }
-      const accessToken = decrypt(config.access_token)
+      const accessToken = cfg.accessToken
 
       // Image headers need a fresh Resumable-Upload handle on every edit
       // (Meta replaces components wholesale). Derive from header_media_url.
@@ -195,6 +191,7 @@ export async function PATCH(
         footer_text: payload.footer_text ?? null,
         buttons: payload.buttons ?? null,
         sample_values: payload.sample_values ?? null,
+        variable_mappings: payload.variable_mappings ?? null,
         status: 'PENDING',
         submission_error: null,
         rejection_reason: null,
@@ -278,21 +275,17 @@ export async function DELETE(
     }
 
     if (existing.meta_template_id && !isDryRun()) {
-      const { data: config, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .single()
-      if (configError || !config || !config.waba_id) {
+      const cfg = await resolveWhatsappConfig(supabase, accountId, {})
+      if (!cfg || !cfg.waba_id) {
         return NextResponse.json(
           { error: 'WhatsApp not configured — cannot delete on Meta.' },
           { status: 400 },
         )
       }
-      const accessToken = decrypt(config.access_token)
+      const accessToken = cfg.accessToken
       try {
         await deleteMessageTemplate({
-          wabaId: config.waba_id,
+          wabaId: cfg.waba_id,
           accessToken,
           name: existing.name,
           metaTemplateId: existing.meta_template_id,

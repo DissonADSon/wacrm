@@ -14,23 +14,22 @@ import { createClient } from "@/lib/supabase/client";
  * composer call this so the logic lives in exactly one place.
  */
 
-/** 16 MB — matches the `file_size_limit` on both buckets (migrations 016/020/023). */
-export const MEDIA_MAX_BYTES = 16 * 1024 * 1024;
+/** Teto do bucket chat-media — subido p/ 100 MB (migration 026) pra acomodar
+ *  documentos grandes. Os caps por tipo abaixo respeitam os limites da Meta. */
+export const MEDIA_MAX_BYTES = 100 * 1024 * 1024;
 
 /**
- * Per-kind upload ceilings that mirror Meta's WhatsApp Cloud API caps so
- * a file that the bucket would accept (≤16 MB) but Meta would reject is
- * caught client-side BEFORE upload — otherwise it lands in storage as an
- * orphan and the send fails with a confusing 400. Images are Meta's
- * tightest cap at 5 MB; documents are held at the 16 MB bucket limit
- * (Meta allows 100 MB, but the bucket — and shared-hosting upload UX —
- * caps lower).
+ * Tetos por tipo que espelham os limites da WhatsApp Cloud API da Meta, pra
+ * rejeitar no cliente ANTES do upload (senão vira objeto órfão no storage e o
+ * envio falha com 400). Limites DUROS da Meta: imagem 5 MB, vídeo 16 MB,
+ * áudio 16 MB. Documento a Meta permite até 100 MB — deixamos 95 MB de margem.
+ * (Via Evolution/Baileys os limites são maiores; estes são os da API oficial.)
  */
 export const MEDIA_MAX_BYTES_BY_KIND = {
   image: 5 * 1024 * 1024,
   video: 16 * 1024 * 1024,
   audio: 16 * 1024 * 1024,
-  document: 16 * 1024 * 1024,
+  document: 95 * 1024 * 1024,
 } as const;
 
 /**
@@ -87,7 +86,7 @@ export async function uploadAccountMedia(
     error: userErr,
   } = await supabase.auth.getUser();
   if (userErr || !user) {
-    throw new Error("Not signed in.");
+    throw new Error("Você não está conectado.");
   }
 
   // Resolve account_id so the path is account-scoped (matches the
@@ -99,7 +98,7 @@ export async function uploadAccountMedia(
     .eq("user_id", user.id)
     .maybeSingle();
   if (profileErr || !profile?.account_id) {
-    throw new Error("Could not resolve your account.");
+    throw new Error("Não foi possível identificar sua conta.");
   }
 
   const path = buildMediaPath(profile.account_id as string, file.name);

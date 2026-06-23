@@ -61,6 +61,10 @@ const SECURITY_HEADERS = [
 ] as const;
 
 const nextConfig: NextConfig = {
+  // Build standalone: gera um servidor Node mínimo (.next/standalone)
+  // pra imagem Docker enxuta no swarm. (deploy self-host)
+  output: "standalone",
+
   /**
    * Cache-Control policy.
    *

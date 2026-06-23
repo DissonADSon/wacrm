@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { sendReactionMessage } from '@/lib/whatsapp/meta-api';
-import { decrypt } from '@/lib/whatsapp/encryption';
+import { sendReaction } from '@/lib/whatsapp/sender';
+import { resolveWhatsappConfig } from '@/lib/whatsapp/config-resolver';
 import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
 import {
   checkRateLimit,
@@ -108,27 +108,23 @@ export async function POST(request: Request) {
       );
     }
 
-    // WhatsApp config + access token. Account-scoped post-multi-user.
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('phone_number_id, access_token')
-      .eq('account_id', accountId)
-      .single();
+    // WhatsApp config + access token. Resolve o número certo da conta
+    // (multi-número): usa o número que a conversa usa, senão o default.
+    const cfg = await resolveWhatsappConfig(supabase, accountId, {
+      conversationId: conversation.id,
+    });
 
-    if (configError || !config) {
+    if (!cfg) {
       return NextResponse.json(
         { error: 'WhatsApp not configured.' },
         { status: 400 },
       );
     }
 
-    const accessToken = decrypt(config.access_token);
     const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
 
     try {
-      await sendReactionMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      await sendReaction(cfg, {
         to: sanitizedPhone,
         targetMessageId: targetMessage.message_id,
         emoji,

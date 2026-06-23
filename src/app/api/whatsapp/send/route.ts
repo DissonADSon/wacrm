@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { type MediaKind } from '@/lib/whatsapp/meta-api'
 import {
-  sendTextMessage,
-  sendTemplateMessage,
-  sendMediaMessage,
-  type MediaKind,
-} from '@/lib/whatsapp/meta-api'
-import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
+  sendText,
+  sendTemplate,
+  sendMedia,
+} from '@/lib/whatsapp/sender'
+import { resolveWhatsappConfig } from '@/lib/whatsapp/config-resolver'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import {
   sanitizePhoneForMeta,
@@ -19,7 +19,6 @@ import {
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit'
-import type { MessageTemplate } from '@/types'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 
 export async function POST(request: Request) {
@@ -72,7 +71,6 @@ export async function POST(request: Request) {
       template_name,
       template_language,
       template_params,
-      template_message_params,
       reply_to_message_id,
     } = body
 
@@ -165,40 +163,19 @@ export async function POST(request: Request) {
       )
     }
 
-    // Fetch and decrypt WhatsApp config
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    // Resolve and decrypt WhatsApp config for this conversation's number.
+    // resolveWhatsappConfig handles multi-number accounts (picks the
+    // conversation's number, falling back to the account default) and
+    // returns the already-decrypted token + lazy GCM upgrade.
+    const cfg = await resolveWhatsappConfig(supabase, accountId, {
+      conversationId: conversation_id,
+    })
 
-    if (configError || !config) {
+    if (!cfg) {
       return NextResponse.json(
         { error: 'WhatsApp not configured. Please set up your WhatsApp integration first.' },
         { status: 400 }
       )
-    }
-
-    const accessToken = decrypt(config.access_token)
-
-    // Self-heal legacy CBC-encrypted tokens. Fire-and-forget: we
-    // return from the send without waiting, so a failed upgrade just
-    // means the next send tries again. The upgrade is idempotent —
-    // concurrent sends both produce valid GCM ciphertexts of the same
-    // plaintext, last write wins.
-    if (isLegacyFormat(config.access_token)) {
-      void supabase
-        .from('whatsapp_config')
-        .update({ access_token: encrypt(accessToken) })
-        .eq('id', config.id)
-        .then(({ error }) => {
-          if (error) {
-            console.warn(
-              '[whatsapp/send] access_token GCM upgrade failed:',
-              error.message,
-            )
-          }
-        })
     }
 
     // Resolve the reply target (if any) to its Meta message_id, which is
@@ -240,17 +217,11 @@ export async function POST(request: Request) {
     let waMessageId = ''
     let workingPhone = sanitizedPhone
 
-    // For template sends, load the row so sendTemplateMessage can
-    // build header + button components from the template definition.
-    // Match on (user_id, name, language) — same triple the unique
-    // index enforces — so multi-language templates work correctly.
-    // Missing template falls through with `templateRow = null` and
-    // the legacy body-only path runs.
-    // Load the template row so sendTemplateMessage can build header
-    // + button components from the definition. isMessageTemplate
-    // guards against a malformed row (e.g. from a partial sync)
-    // crashing the send-builder later in the stack.
-    let templateRow: MessageTemplate | null = null
+    // Validate any locally stored template row up front: isMessageTemplate
+    // guards against a malformed row (e.g. from a partial sync) and lets us
+    // point the user to "Sync from Meta" before the send is attempted.
+    // Match on (account_id, name, language) — same triple the unique index
+    // enforces — so multi-language templates work correctly.
     if (message_type === 'template' && template_name) {
       const { data } = await supabase
         .from('message_templates')
@@ -268,33 +239,25 @@ export async function POST(request: Request) {
           { status: 500 },
         )
       }
-      templateRow = data ?? null
     }
 
     const attempt = async (phone: string): Promise<string> => {
       if (message_type === 'template') {
-        const result = await sendTemplateMessage({
-          phoneNumberId: config.phone_number_id,
-          accessToken,
+        const result = await sendTemplate(cfg, {
           to: phone,
           templateName: template_name,
           language: template_language || 'en_US',
-          template: templateRow ?? undefined,
-          messageParams: template_message_params ?? undefined,
           // Legacy body-only fallback — only consulted when
           // messageParams.body isn't set.
           params: template_params || [],
-          contextMessageId,
         })
         return result.messageId
       }
       if (isMediaKind) {
         // content_text doubles as the caption (ignored for audio inside
-        // sendMediaMessage). filename surfaces in the recipient's chat
+        // sendMedia). filename surfaces in the recipient's chat
         // for documents only.
-        const result = await sendMediaMessage({
-          phoneNumberId: config.phone_number_id,
-          accessToken,
+        const result = await sendMedia(cfg, {
           to: phone,
           kind: message_type as MediaKind,
           link: media_url,
@@ -304,9 +267,7 @@ export async function POST(request: Request) {
         })
         return result.messageId
       }
-      const result = await sendTextMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const result = await sendText(cfg, {
         to: phone,
         text: content_text,
         contextMessageId,

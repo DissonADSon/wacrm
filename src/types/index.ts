@@ -97,6 +97,7 @@ export interface Contact {
   name?: string;
   email?: string;
   company?: string;
+  city?: string;
   avatar_url?: string;
   created_at: string;
   updated_at: string;
@@ -131,6 +132,22 @@ export interface ContactCustomValue {
   id: string;
   contact_id: string;
   custom_field_id: string;
+  value?: string;
+}
+
+/** Campo personalizado de OPORTUNIDADE/card (migration 028). Ex.: "Código de rastreamento". */
+export interface DealCustomField {
+  id: string;
+  account_id: string;
+  field_name: string;
+  field_type: string;
+  created_at: string;
+}
+
+export interface DealCustomValue {
+  id: string;
+  deal_id: string;
+  deal_custom_field_id: string;
   value?: string;
 }
 
@@ -265,6 +282,9 @@ export interface MessageTemplate {
   footer_text?: string;
   buttons?: TemplateButton[];
   sample_values?: TemplateSampleValues;
+  /** Mapeamento de cada variável {{N}} a uma fonte (migration 029).
+   *  Ver src/lib/whatsapp/template-variables.ts. Chave = índice 1-based. */
+  variable_mappings?: Record<string, { source: string; value: string }>;
   status?: MessageTemplateStatus;
   meta_template_id?: string;
   rejection_reason?: string;

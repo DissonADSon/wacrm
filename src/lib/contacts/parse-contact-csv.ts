@@ -8,6 +8,7 @@ export interface ParsedContactRow {
   name?: string;
   email?: string;
   company?: string;
+  city?: string;
   /** Tag names from the optional `tags` column (comma/semicolon separated). */
   tagNames: string[];
 }
@@ -37,12 +38,19 @@ export interface ParseContactCsvResult {
   hasTagsColumn: boolean;
   /** True when the CSV header includes a `company` column. */
   hasCompanyColumn: boolean;
+  /** True when the CSV header includes a `city` (or `cidade`) column. */
+  hasCityColumn: boolean;
 }
 
 export function parseContactCsv(text: string): ParseContactCsvResult {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) {
-    return { rows: [], hasTagsColumn: false, hasCompanyColumn: false };
+    return {
+      rows: [],
+      hasTagsColumn: false,
+      hasCompanyColumn: false,
+      hasCityColumn: false,
+    };
   }
 
   const headers = lines[0]
@@ -51,12 +59,21 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
 
   const phoneIdx = headers.indexOf('phone');
   if (phoneIdx === -1) {
-    return { rows: [], hasTagsColumn: false, hasCompanyColumn: false };
+    return {
+      rows: [],
+      hasTagsColumn: false,
+      hasCompanyColumn: false,
+      hasCityColumn: false,
+    };
   }
 
   const nameIdx = headers.indexOf('name');
   const emailIdx = headers.indexOf('email');
   const companyIdx = headers.indexOf('company');
+  const cityIdx =
+    headers.indexOf('city') >= 0
+      ? headers.indexOf('city')
+      : headers.indexOf('cidade');
   const tagsIdx = headers.indexOf('tags');
 
   const rows: ParsedContactRow[] = [];
@@ -83,6 +100,10 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
         companyIdx >= 0
           ? values[companyIdx]?.replace(/["']/g, '').trim() || undefined
           : undefined,
+      city:
+        cityIdx >= 0
+          ? values[cityIdx]?.replace(/["']/g, '').trim() || undefined
+          : undefined,
       tagNames:
         tagsIdx >= 0 ? parseTagCell(values[tagsIdx]?.replace(/["']/g, '')) : [],
     });
@@ -92,6 +113,7 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
     rows,
     hasTagsColumn: tagsIdx >= 0,
     hasCompanyColumn: companyIdx >= 0,
+    hasCityColumn: cityIdx >= 0,
   };
 }
 

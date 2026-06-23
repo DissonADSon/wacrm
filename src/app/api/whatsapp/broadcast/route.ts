@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { sendTemplate } from '@/lib/whatsapp/sender'
+import { resolveWhatsappConfig } from '@/lib/whatsapp/config-resolver'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import {
@@ -134,13 +134,9 @@ export async function POST(request: Request) {
       )
     }
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    const cfg = await resolveWhatsappConfig(supabase, accountId, {})
 
-    if (configError || !config) {
+    if (!cfg) {
       return NextResponse.json(
         {
           error:
@@ -150,9 +146,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const accessToken = decrypt(config.access_token)
-
-    // Load the template row once so sendTemplateMessage can build
+    // Load the template row once so sendTemplate can build
     // header + button components on each iteration. Loading inside
     // the loop would N+1 against Supabase for every recipient.
     // Guard against a malformed local row crashing every send in
@@ -200,9 +194,7 @@ export async function POST(request: Request) {
 
       for (const variant of variants) {
         try {
-          const result = await sendTemplateMessage({
-            phoneNumberId: config.phone_number_id,
-            accessToken,
+          const result = await sendTemplate(cfg, {
             to: variant,
             templateName: template_name,
             language: template_language || 'en_US',

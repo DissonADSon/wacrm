@@ -1,0 +1,11 @@
+// Marca exibida na UI.
+//
+// Padrão da agência = "ADSon CRM". Para personalizar por cliente, defina
+// NEXT_PUBLIC_APP_NAME no .env.local da instância (ex.: "Johari CRM").
+// Por ser NEXT_PUBLIC_*, vale tanto em Server quanto em Client Components.
+export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME?.trim() || "ADSon CRM";
+
+// Descrição curta usada em metadata e textos de boas-vindas.
+export const APP_DESCRIPTION =
+  process.env.NEXT_PUBLIC_APP_DESCRIPTION?.trim() ||
+  `${APP_NAME} — CRM para WhatsApp.`;

@@ -60,6 +60,7 @@ export function ContactDetailView({
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editCompany, setEditCompany] = useState('');
+  const [editCity, setEditCity] = useState('');
   const [savingDetails, setSavingDetails] = useState(false);
 
   // Tags tab
@@ -99,6 +100,7 @@ export function ContactDetailView({
       setEditPhone(data.phone);
       setEditEmail(data.email ?? '');
       setEditCompany(data.company ?? '');
+      setEditCity(data.city ?? '');
     }
     setLoading(false);
   }, [contactId, supabase]);
@@ -185,7 +187,7 @@ export function ContactDetailView({
 
   async function saveDetails() {
     if (!contactId || !editPhone.trim()) {
-      toast.error('Phone number is required');
+      toast.error('O telefone é obrigatório');
       return;
     }
 
@@ -197,14 +199,15 @@ export function ContactDetailView({
         phone: editPhone.trim(),
         email: editEmail.trim() || null,
         company: editCompany.trim() || null,
+        city: editCity.trim() || null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', contactId);
 
     if (error) {
-      toast.error('Failed to update contact');
+      toast.error('Falha ao atualizar contato');
     } else {
-      toast.success('Contact updated');
+      toast.success('Contato atualizado');
       fetchContact();
       onUpdated();
     }
@@ -248,7 +251,7 @@ export function ContactDetailView({
     } = await supabase.auth.getSession();
     const user = session?.user;
     if (!user || !accountId) {
-      toast.error('Not authenticated');
+      toast.error('Não autenticado');
       setSavingNote(false);
       return;
     }
@@ -261,11 +264,11 @@ export function ContactDetailView({
     });
 
     if (error) {
-      toast.error('Failed to add note');
+      toast.error('Falha ao adicionar nota');
     } else {
       setNewNote('');
       fetchNotes();
-      toast.success('Note added');
+      toast.success('Nota adicionada');
     }
     setSavingNote(false);
   }
@@ -277,10 +280,10 @@ export function ContactDetailView({
       .eq('id', noteId);
 
     if (error) {
-      toast.error('Failed to delete note');
+      toast.error('Falha ao excluir nota');
     } else {
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
-      toast.success('Note deleted');
+      toast.success('Nota excluída');
     }
   }
 
@@ -310,9 +313,9 @@ export function ContactDetailView({
         if (error) throw error;
       }
 
-      toast.success('Custom fields saved');
+      toast.success('Campos personalizados salvos');
     } catch {
-      toast.error('Failed to save custom fields');
+      toast.error('Falha ao salvar campos personalizados');
     }
     setSavingCustom(false);
   }
@@ -349,10 +352,10 @@ export function ContactDetailView({
                 </Avatar>
                 <div className="flex-1 min-w-0">
                   <SheetTitle className="text-popover-foreground truncate">
-                    {contact.name || 'Unknown'}
+                    {contact.name || 'Desconhecido'}
                   </SheetTitle>
                   <SheetDescription className="text-muted-foreground text-xs mt-0.5">
-                    Contact details
+                    Detalhes do contato
                   </SheetDescription>
                   <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                     <button
@@ -379,6 +382,12 @@ export function ContactDetailView({
                         {contact.company}
                       </span>
                     )}
+                    {contact.city && (
+                      <span className="flex items-center gap-1">
+                        <Building2 className="size-3" />
+                        {contact.city}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -391,7 +400,7 @@ export function ContactDetailView({
                   value="details"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
                 >
-                  Details
+                  Detalhes
                 </TabsTrigger>
                 <TabsTrigger
                   value="tags"
@@ -403,19 +412,19 @@ export function ContactDetailView({
                   value="notes"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
                 >
-                  Notes
+                  Notas
                 </TabsTrigger>
                 <TabsTrigger
                   value="custom"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
                 >
-                  Custom Fields
+                  Campos personalizados
                 </TabsTrigger>
                 <TabsTrigger
                   value="deals"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
                 >
-                  Deals
+                  Oportunidades
                 </TabsTrigger>
               </TabsList>
 
@@ -423,7 +432,7 @@ export function ContactDetailView({
               <TabsContent value="details" className="flex-1 overflow-y-auto px-4 py-3">
                 <div className="space-y-3">
                   <div className="space-y-1.5">
-                    <Label className="text-muted-foreground text-xs">Name</Label>
+                    <Label className="text-muted-foreground text-xs">Nome</Label>
                     <Input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
@@ -432,7 +441,7 @@ export function ContactDetailView({
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-muted-foreground text-xs">
-                      Phone <span className="text-red-400">*</span>
+                      Telefone <span className="text-red-400">*</span>
                     </Label>
                     <Input
                       value={editPhone}
@@ -441,7 +450,7 @@ export function ContactDetailView({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-muted-foreground text-xs">Email</Label>
+                    <Label className="text-muted-foreground text-xs">E-mail</Label>
                     <Input
                       value={editEmail}
                       onChange={(e) => setEditEmail(e.target.value)}
@@ -449,11 +458,20 @@ export function ContactDetailView({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-muted-foreground text-xs">Company</Label>
+                    <Label className="text-muted-foreground text-xs">Empresa</Label>
                     <Input
                       value={editCompany}
                       onChange={(e) => setEditCompany(e.target.value)}
                       className="bg-muted border-border text-foreground h-8 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-xs">Cidade</Label>
+                    <Input
+                      value={editCity}
+                      onChange={(e) => setEditCity(e.target.value)}
+                      placeholder="São Paulo"
+                      className="bg-muted border-border text-foreground h-8 text-sm placeholder:text-muted-foreground"
                     />
                   </div>
                   <Button
@@ -467,7 +485,7 @@ export function ContactDetailView({
                     ) : (
                       <Save className="size-3.5" />
                     )}
-                    Save Changes
+                    Salvar alterações
                   </Button>
                 </div>
               </TabsContent>
@@ -476,11 +494,11 @@ export function ContactDetailView({
               <TabsContent value="tags" className="flex-1 overflow-y-auto px-4 py-3">
                 <div className="space-y-3">
                   <p className="text-xs text-muted-foreground">
-                    Click a tag to add or remove it from this contact.
+                    Clique em uma tag para adicioná-la ou removê-la deste contato.
                   </p>
                   {allTags.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No tags available. Create tags in Settings.
+                      Nenhuma tag disponível. Crie tags nas Configurações.
                     </p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
@@ -517,7 +535,7 @@ export function ContactDetailView({
                   <Textarea
                     value={newNote}
                     onChange={(e) => setNewNote(e.target.value)}
-                    placeholder="Write a note..."
+                    placeholder="Escreva uma nota..."
                     className="bg-muted border-border text-foreground placeholder:text-muted-foreground min-h-[60px] text-sm resize-none"
                   />
                   <Button
@@ -531,7 +549,7 @@ export function ContactDetailView({
                     ) : (
                       <Plus className="size-3.5" />
                     )}
-                    Add Note
+                    Adicionar nota
                   </Button>
                 </div>
 
@@ -542,7 +560,7 @@ export function ContactDetailView({
                     </div>
                   ) : notes.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-8">
-                      No notes yet.
+                      Nenhuma nota ainda.
                     </p>
                   ) : (
                     notes.map((note) => (
@@ -562,7 +580,7 @@ export function ContactDetailView({
                           </button>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1.5">
-                          {new Date(note.created_at).toLocaleDateString('en-US', {
+                          {new Date(note.created_at).toLocaleDateString('pt-BR', {
                             month: 'short',
                             day: 'numeric',
                             year: 'numeric',
@@ -584,7 +602,7 @@ export function ContactDetailView({
                   </div>
                 ) : customFields.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-8">
-                    No custom fields defined. Create them in Settings.
+                    Nenhum campo personalizado definido. Crie-os nas Configurações.
                   </p>
                 ) : (
                   <div className="space-y-3">
@@ -601,7 +619,7 @@ export function ContactDetailView({
                               [field.id]: e.target.value,
                             }))
                           }
-                          placeholder={`Enter ${field.field_name}...`}
+                          placeholder={`Informe ${field.field_name}...`}
                           className="bg-muted border-border text-foreground h-8 text-sm placeholder:text-muted-foreground"
                         />
                       </div>
@@ -617,7 +635,7 @@ export function ContactDetailView({
                       ) : (
                         <Save className="size-3.5" />
                       )}
-                      Save Custom Fields
+                      Salvar campos personalizados
                     </Button>
                   </div>
                 )}
@@ -630,7 +648,7 @@ export function ContactDetailView({
                     <Loader2 className="size-5 animate-spin text-primary" />
                   </div>
                 ) : deals.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No deals yet</p>
+                  <p className="text-xs text-muted-foreground">Nenhuma oportunidade ainda</p>
                 ) : (
                   <div className="space-y-2">
                     {deals.map((deal) => (
@@ -670,7 +688,11 @@ export function ContactDetailView({
                                   : 'text-red-400'
                               }
                             >
-                              {deal.status}
+                              {deal.status === 'won'
+                                ? 'Ganha'
+                                : deal.status === 'lost'
+                                  ? 'Perdida'
+                                  : deal.status}
                             </span>
                           )}
                         </div>

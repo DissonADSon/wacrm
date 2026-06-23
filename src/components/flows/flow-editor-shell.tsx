@@ -84,20 +84,20 @@ export function FlowEditorShell({ initialFlow, initialNodes }: Props) {
           <div className="flex items-center justify-end">
             <div
               role="group"
-              aria-label="Editor view"
+              aria-label="Visualização do editor"
               className="inline-flex items-center gap-1 rounded-md border border-border bg-card p-0.5 text-xs"
             >
               <ToggleButton
                 active={effectiveView === "canvas"}
                 onClick={() => choose("canvas")}
                 icon={<LayoutGrid className="h-3 w-3" />}
-                label="Canvas"
+                label="Tela"
               />
               <ToggleButton
                 active={effectiveView === "list"}
                 onClick={() => choose("list")}
                 icon={<ListTree className="h-3 w-3" />}
-                label="List"
+                label="Lista"
               />
             </div>
           </div>

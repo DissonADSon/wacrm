@@ -1,5 +1,5 @@
-import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { sendText, sendTemplate } from '@/lib/whatsapp/sender'
+import { resolveWhatsappConfig } from '@/lib/whatsapp/config-resolver'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -83,22 +83,19 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', input.accountId)
-    .single()
-  if (configErr || !config) {
+  // Resolve a config CERTA para esta conversa (multi-número por conta).
+  // Passamos conversationId pra honrar o número que a conversa usa;
+  // sem ele cai no número default da conta (idêntico ao de 1 número).
+  const cfg = await resolveWhatsappConfig(db, input.accountId, {
+    conversationId: input.conversationId,
+  })
+  if (!cfg) {
     throw new Error('WhatsApp not configured for this account')
   }
 
-  const accessToken = decrypt(config.access_token)
-
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
-      const r = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const r = await sendTemplate(cfg, {
         to: phone,
         templateName: input.templateName,
         language: input.language,
@@ -106,9 +103,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       })
       return r.messageId
     }
-    const r = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
+    const r = await sendText(cfg, {
       to: phone,
       text: input.text,
     })

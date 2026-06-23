@@ -22,12 +22,22 @@ export function verifyMetaWebhookSignature(
   rawBody: string,
   signatureHeader: string | null,
 ): boolean {
-  const secret = process.env.META_APP_SECRET
-  if (!secret) {
+  // Aceita dois modos de operação, ambos com `x-hub-signature-256`:
+  //   - Meta direto: assina o body cru com o META_APP_SECRET (App Secret).
+  //   - Via EvoHub (proxy): o Hub reassina o body cru com o
+  //     EVOLUTION_HUB_WEBHOOK_SECRET (o `secret` do webhook cadastrado no Hub).
+  // Verifica contra qualquer secret configurado — assim o mesmo deploy
+  // funciona com Meta direto ou atrás do EvoHub sem mudar código.
+  const secrets = [
+    process.env.EVOLUTION_HUB_WEBHOOK_SECRET,
+    process.env.META_APP_SECRET,
+  ].filter((s): s is string => Boolean(s))
+
+  if (secrets.length === 0) {
     console.error(
-      '[webhook] META_APP_SECRET is not set — rejecting request. ' +
-        'Configure the env var (Meta → App Settings → Basic → App Secret) ' +
-        'to enable signature verification.',
+      '[webhook] nenhum secret configurado — rejeitando. Defina ' +
+        'META_APP_SECRET (Meta direto) ou EVOLUTION_HUB_WEBHOOK_SECRET (EvoHub) ' +
+        'para habilitar a verificação de assinatura.',
     )
     return false
   }
@@ -35,13 +45,16 @@ export function verifyMetaWebhookSignature(
   if (!signatureHeader) return false
   if (!signatureHeader.startsWith('sha256=')) return false
 
-  const expected =
-    'sha256=' +
-    crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
-
-  const a = Buffer.from(signatureHeader)
-  const b = Buffer.from(expected)
-  // Bail if lengths differ — timingSafeEqual throws otherwise.
-  if (a.length !== b.length) return false
-  return crypto.timingSafeEqual(a, b)
+  const received = Buffer.from(signatureHeader)
+  for (const secret of secrets) {
+    const expected = Buffer.from(
+      'sha256=' +
+        crypto.createHmac('sha256', secret).update(rawBody).digest('hex'),
+    )
+    // timingSafeEqual exige mesmo tamanho; pula se diferente.
+    if (received.length === expected.length && crypto.timingSafeEqual(received, expected)) {
+      return true
+    }
+  }
+  return false
 }

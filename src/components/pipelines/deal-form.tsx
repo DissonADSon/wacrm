@@ -9,6 +9,7 @@ import type {
   Contact,
   Conversation,
   Deal,
+  DealCustomField,
   DealStatus,
   PipelineStage,
   Profile,
@@ -69,6 +70,10 @@ export function DealForm({
   const [linkedConversation, setLinkedConversation] =
     useState<Conversation | null>(null);
 
+  // Campos personalizados da oportunidade (defs + valores por campo)
+  const [customFields, setCustomFields] = useState<DealCustomField[]>([]);
+  const [customValues, setCustomValues] = useState<Record<string, string>>({});
+
   const [saving, setSaving] = useState(false);
   const [statusAction, setStatusAction] = useState<DealStatus | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -123,6 +128,34 @@ export function DealForm({
     };
   }, [open, supabase]);
 
+  // Carrega as defs de campos personalizados sempre que o form abrir; e os
+  // valores apenas quando estiver editando uma oportunidade existente.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      const [fieldsRes, valuesRes] = await Promise.all([
+        supabase.from("deal_custom_fields").select("*").order("field_name"),
+        deal?.id
+          ? supabase
+              .from("deal_custom_values")
+              .select("*")
+              .eq("deal_id", deal.id)
+          : Promise.resolve({ data: [] as { deal_custom_field_id: string; value: string | null }[] }),
+      ]);
+      if (cancelled) return;
+      setCustomFields((fieldsRes.data ?? []) as DealCustomField[]);
+      const map: Record<string, string> = {};
+      (valuesRes.data ?? []).forEach((v) => {
+        map[v.deal_custom_field_id] = v.value ?? "";
+      });
+      setCustomValues(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, deal?.id, supabase]);
+
   // Fetch linked conversation for the selected contact (newest open one).
   // Clearing on no-selection is sync with prop state; the populated
   // case runs setLinkedConversation inside the async fetch callback.
@@ -149,9 +182,37 @@ export function DealForm({
     };
   }, [open, contactId, supabase]);
 
+  // Persiste os valores dos campos personalizados (delete + re-insert).
+  // Não aborta o fluxo de salvar: em caso de erro, só avisa via toast.
+  async function persistCustomValues(dealId: string) {
+    try {
+      await supabase
+        .from("deal_custom_values")
+        .delete()
+        .eq("deal_id", dealId);
+
+      const rows = Object.entries(customValues)
+        .filter(([, val]) => val.trim())
+        .map(([fieldId, val]) => ({
+          deal_id: dealId,
+          deal_custom_field_id: fieldId,
+          value: val.trim(),
+        }));
+
+      if (rows.length > 0) {
+        const { error } = await supabase
+          .from("deal_custom_values")
+          .insert(rows);
+        if (error) throw error;
+      }
+    } catch {
+      toast.warning("Oportunidade salva, mas os campos personalizados não foram salvos");
+    }
+  }
+
   async function handleSave() {
     if (!title.trim() || !contactId || !stageId) {
-      toast.error("Title, contact, and stage are required");
+      toast.error("Título, contato e etapa são obrigatórios");
       return;
     }
     setSaving(true);
@@ -174,37 +235,43 @@ export function DealForm({
         .update(payload)
         .eq("id", deal.id);
       if (error) {
-        toast.error("Failed to save deal");
+        toast.error("Falha ao salvar a oportunidade");
         setSaving(false);
         return;
       }
+      await persistCustomValues(deal.id);
     } else {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) {
-        toast.error("Not signed in");
+        toast.error("Você não está autenticado");
         setSaving(false);
         return;
       }
       if (!accountId) {
-        toast.error("Your profile is not linked to an account.");
+        toast.error("Seu perfil não está vinculado a uma conta.");
         setSaving(false);
         return;
       }
-      const { error } = await supabase
+      const { data: created, error } = await supabase
         .from("deals")
-        .insert({ ...payload, user_id: user.id, account_id: accountId, status: "open" });
+        .insert({ ...payload, user_id: user.id, account_id: accountId, status: "open" })
+        .select("id")
+        .single();
       if (error) {
-        toast.error("Failed to create deal");
+        toast.error("Falha ao criar a oportunidade");
         setSaving(false);
         return;
+      }
+      if (created?.id) {
+        await persistCustomValues(created.id);
       }
     }
 
     setSaving(false);
-    toast.success(deal ? "Deal updated" : "Deal created");
+    toast.success(deal ? "Oportunidade atualizada" : "Oportunidade criada");
     onOpenChange(false);
     onSaved();
   }
@@ -218,11 +285,11 @@ export function DealForm({
       .eq("id", deal.id);
     setStatusAction(null);
     if (error) {
-      toast.error("Failed to update deal status");
+      toast.error("Falha ao atualizar o status da oportunidade");
       return;
     }
     toast.success(
-      status === "won" ? "Marked as won" : status === "lost" ? "Marked as lost" : "Deal reopened",
+      status === "won" ? "Marcada como ganha" : status === "lost" ? "Marcada como perdida" : "Oportunidade reaberta",
     );
     onOpenChange(false);
     onSaved();
@@ -234,10 +301,10 @@ export function DealForm({
     const { error } = await supabase.from("deals").delete().eq("id", deal.id);
     setDeleting(false);
     if (error) {
-      toast.error("Failed to delete deal");
+      toast.error("Falha ao excluir a oportunidade");
       return;
     }
-    toast.success("Deal deleted");
+    toast.success("Oportunidade excluída");
     setConfirmDelete(false);
     onOpenChange(false);
     onSaved();
@@ -252,29 +319,29 @@ export function DealForm({
         <div className="flex h-full flex-col">
           <SheetHeader className="border-b border-border/50 p-4">
             <SheetTitle className="text-popover-foreground">
-              {deal ? "Edit Deal" : "New Deal"}
+              {deal ? "Editar oportunidade" : "Nova oportunidade"}
             </SheetTitle>
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             <div className="grid gap-2">
-              <Label className="text-muted-foreground">Title</Label>
+              <Label className="text-muted-foreground">Título</Label>
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Deal title"
+                placeholder="Título da oportunidade"
                 className="border-border bg-muted text-foreground"
               />
             </div>
 
             <div className="grid gap-2">
-              <Label className="text-muted-foreground">Contact</Label>
+              <Label className="text-muted-foreground">Contato</Label>
               <select
                 value={contactId}
                 onChange={(e) => setContactId(e.target.value)}
                 className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               >
-                <option value="">Select a contact</option>
+                <option value="">Selecione um contato</option>
                 {contacts.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name || c.phone}
@@ -288,14 +355,14 @@ export function DealForm({
                   className="mt-1 inline-flex items-center gap-1.5 self-start rounded-md bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
                 >
                   <MessageSquare className="h-3 w-3" />
-                  Link to Conversation
+                  Ir para a conversa
                 </Link>
               )}
             </div>
 
             <div className="grid grid-cols-[1fr_110px] gap-3">
               <div className="grid gap-2">
-                <Label className="text-muted-foreground">Value</Label>
+                <Label className="text-muted-foreground">Valor</Label>
                 <div className="relative">
                   <DollarSign className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -308,7 +375,7 @@ export function DealForm({
                 </div>
               </div>
               <div className="grid gap-2">
-                <Label className="text-muted-foreground">Currency</Label>
+                <Label className="text-muted-foreground">Moeda</Label>
                 <select
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value)}
@@ -324,7 +391,7 @@ export function DealForm({
             </div>
 
             <div className="grid gap-2">
-              <Label className="text-muted-foreground">Expected Close Date</Label>
+              <Label className="text-muted-foreground">Data prevista de fechamento</Label>
               <Input
                 type="date"
                 value={expectedCloseDate}
@@ -334,7 +401,7 @@ export function DealForm({
             </div>
 
             <div className="grid gap-2">
-              <Label className="text-muted-foreground">Stage</Label>
+              <Label className="text-muted-foreground">Etapa</Label>
               <select
                 value={stageId}
                 onChange={(e) => setStageId(e.target.value)}
@@ -349,13 +416,13 @@ export function DealForm({
             </div>
 
             <div className="grid gap-2">
-              <Label className="text-muted-foreground">Assigned To</Label>
+              <Label className="text-muted-foreground">Responsável</Label>
               <select
                 value={assignedTo}
                 onChange={(e) => setAssignedTo(e.target.value)}
                 className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
               >
-                <option value="">Unassigned</option>
+                <option value="">Sem responsável</option>
                 {profiles.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.full_name || p.email}
@@ -365,14 +432,40 @@ export function DealForm({
             </div>
 
             <div className="grid gap-2">
-              <Label className="text-muted-foreground">Notes</Label>
+              <Label className="text-muted-foreground">Notas</Label>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add notes..."
+                placeholder="Adicione notas..."
                 className="min-h-[100px] border-border bg-muted text-foreground"
               />
             </div>
+
+            {customFields.length > 0 && (
+              <div className="space-y-3 rounded-lg border border-border bg-muted/50 p-3">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Campos personalizados
+                </p>
+                {customFields.map((field) => (
+                  <div key={field.id} className="grid gap-2">
+                    <Label className="text-muted-foreground capitalize">
+                      {field.field_name}
+                    </Label>
+                    <Input
+                      value={customValues[field.id] ?? ""}
+                      onChange={(e) =>
+                        setCustomValues((prev) => ({
+                          ...prev,
+                          [field.id]: e.target.value,
+                        }))
+                      }
+                      placeholder={`Informe ${field.field_name}...`}
+                      className="border-border bg-muted text-foreground"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             {deal && (
               <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-3">
@@ -391,7 +484,7 @@ export function DealForm({
                     ) : (
                       <>
                         <Check className="mr-1 h-4 w-4" />
-                        Mark as Won
+                        Marcar como ganha
                       </>
                     )}
                   </Button>
@@ -406,7 +499,7 @@ export function DealForm({
                     ) : (
                       <>
                         <X className="mr-1 h-4 w-4" />
-                        Mark as Lost
+                        Marcar como perdida
                       </>
                     )}
                   </Button>
@@ -419,7 +512,7 @@ export function DealForm({
                     disabled={!!statusAction}
                     className="w-full text-muted-foreground hover:text-foreground"
                   >
-                    Reopen deal
+                    Reabrir oportunidade
                   </Button>
                 )}
               </div>
@@ -433,21 +526,21 @@ export function DealForm({
                 onClick={() => onOpenChange(false)}
                 className="flex-1 border-border bg-transparent text-muted-foreground hover:bg-muted"
               >
-                Cancel
+                Cancelar
               </Button>
               <Button
                 onClick={handleSave}
                 disabled={saving || !title.trim() || !contactId || !stageId}
                 className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                {saving ? "Saving..." : deal ? "Save Changes" : "Create Deal"}
+                {saving ? "Salvando..." : deal ? "Salvar alterações" : "Criar oportunidade"}
               </Button>
             </div>
 
             {deal &&
               (confirmDelete ? (
                 <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">
-                  <span className="text-red-300">Delete this deal?</span>
+                  <span className="text-red-300">Excluir esta oportunidade?</span>
                   <div className="flex gap-1">
                     <button
                       type="button"
@@ -455,7 +548,7 @@ export function DealForm({
                       disabled={deleting}
                       className="rounded px-2 py-1 text-muted-foreground hover:bg-muted"
                     >
-                      Cancel
+                      Cancelar
                     </button>
                     <button
                       type="button"
@@ -463,7 +556,7 @@ export function DealForm({
                       disabled={deleting}
                       className="rounded bg-red-600 px-2 py-1 font-medium text-white hover:bg-red-700 disabled:opacity-50"
                     >
-                      {deleting ? "Deleting..." : "Confirm"}
+                      {deleting ? "Excluindo..." : "Confirmar"}
                     </button>
                   </div>
                 </div>
@@ -474,7 +567,7 @@ export function DealForm({
                   className="mt-3 flex w-full items-center justify-center gap-1 text-xs text-red-400 hover:text-red-300"
                 >
                   <Trash2 className="h-3 w-3" />
-                  Delete Deal
+                  Excluir oportunidade
                 </button>
               ))}
           </div>
