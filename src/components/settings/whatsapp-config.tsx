@@ -469,6 +469,10 @@ export function WhatsAppConfig() {
             )}
           </Button>
         </div>
+
+        <div className="mt-6">
+          <AdditionalNumbers />
+        </div>
       </section>
     );
   }
