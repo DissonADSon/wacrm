@@ -23,6 +23,7 @@ import { NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { isValidE164 } from '@/lib/whatsapp/phone-utils'
+import { downloadMediaEvolution, type EvolutionTarget } from '@/lib/whatsapp/evolution-api'
 import {
   processMessage,
   type WhatsAppMessage,
@@ -173,26 +174,108 @@ function normalizeEvolutionMessage(data: Json): WhatsAppMessage | null {
     return { ...base, ...ctxField, type: 'text', text: { body } }
   }
 
-  // Mídia — placeholder textual por ora (download de mídia Evolution é o
-  // próximo passo; o Baileys não usa media_id da Meta). Áudio (PTT) vem como
-  // audioMessage com ptt:true, não como tipo separado.
-  const mediaLabel: [string, string | undefined] | null = (() => {
-    if (m.imageMessage) return ['imagem', m.imageMessage.caption]
-    if (m.videoMessage) return ['vídeo', m.videoMessage.caption]
-    if (m.audioMessage) return ['áudio', undefined]
-    if (m.documentMessage) return ['documento', m.documentMessage.fileName || m.documentMessage.caption]
-    if (m.stickerMessage) return ['figurinha', undefined]
-    return null
-  })()
-  if (mediaLabel) {
-    const [kind, caption] = mediaLabel
-    const body = caption ? `[${kind}] ${caption}` : `[${kind}]`
-    return { ...base, ...ctxField, type: 'text', text: { body } }
+  // Mídia — emite o tipo correto. O download dos bytes + upload no storage
+  // (e o preenchimento do `url`) acontece no handler do POST, que tem o
+  // alvo Evolution (base/instância/apikey) e a `key` p/ baixar via Baileys.
+  // Áudio (PTT) vem como audioMessage com ptt:true, não como tipo separado.
+  if (m.imageMessage) {
+    return { ...base, ...ctxField, type: 'image', image: { id: base.id, mime_type: m.imageMessage.mimetype || 'image/jpeg', caption: m.imageMessage.caption } }
+  }
+  if (m.videoMessage) {
+    return { ...base, ...ctxField, type: 'video', video: { id: base.id, mime_type: m.videoMessage.mimetype || 'video/mp4', caption: m.videoMessage.caption } }
+  }
+  if (m.audioMessage) {
+    return { ...base, ...ctxField, type: 'audio', audio: { id: base.id, mime_type: m.audioMessage.mimetype || 'audio/ogg' } }
+  }
+  if (m.documentMessage) {
+    return { ...base, ...ctxField, type: 'document', document: { id: base.id, mime_type: m.documentMessage.mimetype || 'application/octet-stream', filename: m.documentMessage.fileName, caption: m.documentMessage.caption } }
+  }
+  if (m.stickerMessage) {
+    return { ...base, ...ctxField, type: 'sticker', sticker: { id: base.id, mime_type: m.stickerMessage.mimetype || 'image/webp' } }
   }
 
   // Tipo não suportado (enquete, etc.) — descarta em vez de criar "[mensagem]".
   console.warn('[evolution-webhook] tipo não tratado, descartado:', Object.keys(m).join(','))
   return null
+}
+
+const MEDIA_TYPES = new Set(['image', 'video', 'audio', 'document', 'sticker'])
+const KIND_LABEL: Record<string, string> = {
+  image: 'imagem', video: 'vídeo', audio: 'áudio', document: 'documento', sticker: 'figurinha',
+}
+
+/**
+ * Baixa a mídia de uma mensagem Evolution e sobe no bucket `chat-media`
+ * (service role; path account-scoped igual ao da mídia enviada). Preenche
+ * `message.<tipo>.url` com a URL pública. Em qualquer falha, converte a
+ * mensagem num placeholder textual ("[imagem] legenda") pra não virar bolha
+ * vazia (o parse cairia no proxy Cloud API, que não existe no Baileys).
+ */
+async function resolveEvolutionMedia(
+  message: WhatsAppMessage,
+  data: Json,
+  target: EvolutionTarget,
+  accountId: string,
+): Promise<void> {
+  const kind = message.type
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const media = (message as any)[kind] as { mime_type?: string; caption?: string; filename?: string; url?: string } | undefined
+  if (!media) return
+  const dl = await downloadMediaEvolution(target, data?.key)
+  if (dl?.base64) {
+    const mimetype = dl.mimetype || media.mime_type || 'application/octet-stream'
+    const ext = (mimetype.split('/')[1] || 'bin').split(';')[0]
+    const fileName = dl.fileName || media.filename || `${kind}.${ext}`
+    const url = await storeEvolutionMedia(accountId, dl.base64, mimetype, fileName)
+    if (url) {
+      media.url = url
+      media.mime_type = mimetype
+      return
+    }
+  }
+  // Fallback: download/upload falhou → vira texto placeholder (não bolha vazia).
+  const label = KIND_LABEL[kind] || 'arquivo'
+  const body = media.caption ? `[${label}] ${media.caption}` : `[${label}]`
+  message.type = 'text'
+  message.text = { body }
+}
+
+/** Path account-scoped do objeto no storage (mesma convenção de upload-media.ts,
+ *  inline aqui p/ não importar módulo client-side num route server). */
+function mediaPath(accountId: string, fileName: string, mimetype: string): string {
+  const hasExt = /\.[^.]+$/.test(fileName)
+  const ext = hasExt
+    ? fileName.split('.').pop()!.toLowerCase()
+    : (mimetype.split('/')[1] || 'bin').split(';')[0]
+  const safeBase =
+    fileName.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 40) || 'file'
+  return `account-${accountId}/${Date.now()}-${safeBase}.${ext}`
+}
+
+/** Sobe um base64 no bucket chat-media (service role) e devolve a URL pública. */
+async function storeEvolutionMedia(
+  accountId: string,
+  base64: string,
+  mimetype: string,
+  fileName: string,
+): Promise<string | null> {
+  try {
+    const buffer = Buffer.from(base64, 'base64')
+    const path = mediaPath(accountId, fileName, mimetype)
+    const admin = supabaseAdmin()
+    const { error } = await admin.storage
+      .from('chat-media')
+      .upload(path, buffer, { contentType: mimetype, upsert: false })
+    if (error) {
+      console.error('[evolution-webhook] upload de mídia falhou:', error.message)
+      return null
+    }
+    const { data } = admin.storage.from('chat-media').getPublicUrl(path)
+    return data.publicUrl
+  } catch (e) {
+    console.error('[evolution-webhook] storeEvolutionMedia erro:', e instanceof Error ? e.message : e)
+    return null
+  }
 }
 
 export async function POST(request: Request) {
@@ -236,6 +319,17 @@ export async function POST(request: Request) {
 
     const message = normalizeEvolutionMessage(data)
     if (!message) continue
+
+    // Mídia recebida: baixa via Evolution e sobe no nosso storage (preenche
+    // message.<tipo>.url). Em falha, vira placeholder textual.
+    if (MEDIA_TYPES.has(message.type)) {
+      const target: EvolutionTarget = {
+        base: config.api_base || '',
+        instance: config.evolution_instance,
+        apikey: decrypt(config.access_token),
+      }
+      await resolveEvolutionMedia(message, data, target, config.account_id)
+    }
 
     const contact = {
       profile: { name: data?.pushName || message.from },

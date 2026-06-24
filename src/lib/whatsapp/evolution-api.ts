@@ -95,3 +95,35 @@ export async function sendMediaEvolution(
   })
   return { messageId: pickMessageId(r) }
 }
+
+export interface DownloadMediaEvolutionResult {
+  /** Conteúdo da mídia em base64 (sem o prefixo data:). */
+  base64: string
+  mimetype: string
+  fileName?: string
+}
+
+/**
+ * Baixa a mídia de uma mensagem RECEBIDA via Evolution (Baileys não usa o
+ * media_id da Meta — a mídia é resolvida pela `key` da mensagem). Usado no
+ * webhook de entrada para persistir a mídia no nosso storage. Retorna `null`
+ * em qualquer falha (o caller cai num placeholder textual).
+ */
+export async function downloadMediaEvolution(
+  t: EvolutionTarget,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  key: any,
+): Promise<DownloadMediaEvolutionResult | null> {
+  try {
+    const r = await evoPost(t, 'chat/getBase64FromMediaMessage', { message: { key } })
+    if (!r?.base64) return null
+    return {
+      base64: r.base64,
+      mimetype: r.mimetype || 'application/octet-stream',
+      fileName: r.fileName,
+    }
+  } catch (e) {
+    console.error('[evolution] download de mídia falhou:', e instanceof Error ? e.message : e)
+    return null
+  }
+}

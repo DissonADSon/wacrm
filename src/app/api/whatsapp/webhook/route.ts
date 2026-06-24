@@ -31,11 +31,15 @@ export interface WhatsAppMessage {
   timestamp: string
   type: string
   text?: { body: string }
-  image?: { id: string; mime_type: string; caption?: string }
-  video?: { id: string; mime_type: string; caption?: string }
-  document?: { id: string; mime_type: string; filename?: string; caption?: string }
-  audio?: { id: string; mime_type: string }
-  sticker?: { id: string; mime_type: string }
+  // `url` (opcional): URL pública já resolvida da mídia. Usado pelo caminho
+  // Evolution (Baileys), que baixa a mídia e sobe no storage no recebimento —
+  // aí o parse usa essa URL direto em vez do proxy /api/whatsapp/media/<id>
+  // da Cloud API (que depende de media_id da Meta, inexistente no Baileys).
+  image?: { id: string; mime_type: string; caption?: string; url?: string }
+  video?: { id: string; mime_type: string; caption?: string; url?: string }
+  document?: { id: string; mime_type: string; filename?: string; caption?: string; url?: string }
+  audio?: { id: string; mime_type: string; url?: string }
+  sticker?: { id: string; mime_type: string; url?: string }
   location?: { latitude: number; longitude: number; name?: string; address?: string }
   reaction?: { message_id: string; emoji: string }
   /**
@@ -780,7 +784,7 @@ async function parseMessageContent(
         return {
           ...empty,
           contentText: message.image.caption || null,
-          mediaUrl: await verifyAndBuildUrl(message.image.id),
+          mediaUrl: message.image.url || (await verifyAndBuildUrl(message.image.id)),
           mediaType: message.image.mime_type,
         }
       }
@@ -791,7 +795,7 @@ async function parseMessageContent(
         return {
           ...empty,
           contentText: message.video.caption || null,
-          mediaUrl: await verifyAndBuildUrl(message.video.id),
+          mediaUrl: message.video.url || (await verifyAndBuildUrl(message.video.id)),
           mediaType: message.video.mime_type,
         }
       }
@@ -803,7 +807,7 @@ async function parseMessageContent(
           ...empty,
           contentText:
             message.document.caption || message.document.filename || null,
-          mediaUrl: await verifyAndBuildUrl(message.document.id),
+          mediaUrl: message.document.url || (await verifyAndBuildUrl(message.document.id)),
           mediaType: message.document.mime_type,
         }
       }
@@ -813,7 +817,7 @@ async function parseMessageContent(
       if (message.audio?.id) {
         return {
           ...empty,
-          mediaUrl: await verifyAndBuildUrl(message.audio.id),
+          mediaUrl: message.audio.url || (await verifyAndBuildUrl(message.audio.id)),
           mediaType: message.audio.mime_type,
         }
       }
@@ -826,7 +830,7 @@ async function parseMessageContent(
       if (message.sticker?.id) {
         return {
           ...empty,
-          mediaUrl: await verifyAndBuildUrl(message.sticker.id),
+          mediaUrl: message.sticker.url || (await verifyAndBuildUrl(message.sticker.id)),
           mediaType: message.sticker.mime_type,
         }
       }
