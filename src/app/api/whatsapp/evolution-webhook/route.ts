@@ -49,13 +49,18 @@ function phoneFromJid(jid: string): string {
  */
 function normalizeEvolutionMessage(data: Json): WhatsAppMessage | null {
   const key = data?.key ?? {}
+  const remoteJid: string = key.remoteJid || ''
+  // Ignora mensagens de GRUPO. O CRM é atendimento 1:1; o id do grupo
+  // (`@g.us`, ~18 dígitos) não é telefone e quebra o envio da resposta
+  // com "Invalid phone number format".
+  if (remoteJid.endsWith('@g.us')) return null
   const m = data?.message ?? {}
   // O WhatsApp mascara o remetente como `@lid` (LID) em vários casos de
   // privacidade — aí `remoteJid` é um identificador interno, NÃO o telefone.
   // O número real vem em `senderPn` (sender phone number). Preferir senderPn;
   // só cair pro remoteJid quando não houver. Sem isso, o contato é criado com
   // o LID no lugar do número e a RESPOSTA falha ("number exists:false").
-  const from = phoneFromJid(key.senderPn || key.remoteJid || '')
+  const from = phoneFromJid(key.senderPn || remoteJid)
   if (!from) return null
 
   const base = {
