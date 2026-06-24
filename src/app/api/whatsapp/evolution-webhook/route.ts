@@ -26,8 +26,28 @@ import { isValidE164 } from '@/lib/whatsapp/phone-utils'
 import { downloadMediaEvolution, type EvolutionTarget } from '@/lib/whatsapp/evolution-api'
 import {
   processMessage,
+  handleStatusUpdate,
   type WhatsAppMessage,
 } from '@/app/api/whatsapp/webhook/route'
+
+// Mapa de status do Baileys/Evolution → ladder interno (Meta-style) que o
+// handleStatusUpdate e o CHECK de messages.status entendem. O Evolution
+// entrega como string (SERVER_ACK/DELIVERY_ACK/READ/PLAYED); algumas versões
+// mandam o enum numérico do Baileys (2/3/4/5) — cobrimos os dois.
+const EVOLUTION_STATUS_MAP: Record<string, string> = {
+  PENDING: 'pending',
+  ERROR: 'failed',
+  SERVER_ACK: 'sent',
+  DELIVERY_ACK: 'delivered',
+  READ: 'read',
+  PLAYED: 'read',
+  '0': 'failed',
+  '1': 'pending',
+  '2': 'sent',
+  '3': 'delivered',
+  '4': 'read',
+  '5': 'read',
+}
 
 function supabaseAdmin() {
   return createAdminClient(
@@ -286,9 +306,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
 
-  // Evolution manda eventos variados; só tratamos mensagens recebidas.
+  // Evolution manda eventos variados. Tratamos: messages.upsert (recebidas) e
+  // messages.update (ACK de status: entregue/lido das que ENVIAMOS). Normaliza
+  // o nome do evento (MESSAGES_UPDATE → messages.update).
   const event: string = payload?.event ?? ''
-  if (event && event !== 'messages.upsert') {
+  const ev = event.toLowerCase().replace(/_/g, '.')
+  if (event && ev !== 'messages.upsert' && ev !== 'messages.update') {
     return NextResponse.json({ ok: true, ignored: event })
   }
 
@@ -311,6 +334,32 @@ export async function POST(request: Request) {
 
   // O payload pode trazer 1 mensagem (data) ou um array. Normaliza pra lista.
   const items: Json[] = Array.isArray(payload?.data) ? payload.data : [payload?.data]
+
+  // ACK de status (entregue/lido) das mensagens que enviamos por este número.
+  // Atualiza messages.status + broadcast_recipients via handleStatusUpdate.
+  if (ev === 'messages.update') {
+    let updated = 0
+    for (const data of items) {
+      if (!data?.key?.id) continue
+      const raw = data?.update?.status ?? data?.status ?? data?.update?.messageStatus
+      const mapped = raw != null ? EVOLUTION_STATUS_MAP[String(raw)] : undefined
+      if (!mapped) continue
+      const tsNum = Number(data?.messageTimestamp)
+      const ts = String(Number.isFinite(tsNum) && tsNum > 0 ? tsNum : Math.floor(Date.now() / 1000))
+      try {
+        await handleStatusUpdate({
+          id: data.key.id,
+          status: mapped,
+          timestamp: ts,
+          recipient_id: phoneFromJid(data?.key?.senderPn || data?.key?.remoteJid || ''),
+        })
+        updated++
+      } catch (err) {
+        console.error('[evolution-webhook] status update falhou:', err)
+      }
+    }
+    return NextResponse.json({ ok: true, statusUpdates: updated })
+  }
 
   for (const data of items) {
     if (!data) continue

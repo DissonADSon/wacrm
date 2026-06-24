@@ -330,7 +330,7 @@ function isValidStatusTransition(current: string, incoming: string): boolean {
   return ii > ci
 }
 
-async function handleStatusUpdate(status: {
+export async function handleStatusUpdate(status: {
   id: string
   status: string
   timestamp: string
