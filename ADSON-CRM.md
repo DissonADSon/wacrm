@@ -156,7 +156,7 @@ Itens abertos, base para as próximas frentes. Marcar prioridade ao acionar.
 - [ ] **Bloquear "Automações" no menu** por conta via mecanismo `beta_features` (fácil).
 
 ### P1b — backlog da auditoria Evolution (Baileys) — não-urgente, mas relevante p/ número real
-- [ ] **M5 — Download de mídia inbound Evolution.** Hoje foto/áudio/PDF recebidos viram placeholder `[imagem]` não-clicável (Baileys não usa `media_id` da Meta). Implementar `getBase64FromMediaMessage` → Supabase Storage → `media_url` real.
+- [x] **M5 — Download de mídia inbound Evolution (FEITO + deployado 24/06).** Webhook baixa via `getBase64FromMediaMessage` → sobe no bucket `chat-media` (service role, path account-scoped) → grava `media_url` pública. `normalizeEvolutionMessage` emite o tipo real; `parseMessageContent` usa a URL pré-resolvida. Fallback p/ placeholder se o download falhar. Validado: download+upload+URL pública OK. **Falta confirmar com 1 mídia real recebida no 0798.**
 - [ ] **M6 — Status de envio (entregue/lido) p/ Evolution.** `messages.update` é descartado → mensagens ficam presas em "enviado"; broadcast nunca conta delivered/read. Tratar `messages.update` e mapear o enum Baileys (2/3/4) pro ladder.
 - [ ] **M10/M11 — Envio: reply citado incompleto** (falta `remoteJid`/`fromMe` no `quoted`) e **mimetype** ausente no `sendMedia` (documento sem nome/ícone).
 - [ ] **M12 — Dedupe por últimos-8 dígitos** pode fundir contatos BR distintos (DDD diferente, mesmo sufixo). Canonicalizar número BR (9 dígitos) e exigir match completo.
