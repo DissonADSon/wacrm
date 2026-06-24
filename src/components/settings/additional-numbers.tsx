@@ -36,6 +36,13 @@ const providerLabel: Record<string, string> = {
   evolution: 'Evolution (Baileys)',
 };
 
+// Preço do número adicional não-WABA (Evolution) e destino da solicitação.
+// Por ora aponta para a landing de contratação; trocar por um webhook de
+// provisionamento depois (basta mudar a env, sem tocar no componente).
+const NUMERO_ADICIONAL_PRECO = 'R$ 49,90/mês';
+const CONTRATAR_NUMERO_URL =
+  process.env.NEXT_PUBLIC_CONTRATAR_NUMERO_URL || 'https://adsonsolucoes.com.br/contrate';
+
 export function AdditionalNumbers() {
   const [numbers, setNumbers] = useState<NumberRow[]>([]);
   const [limit, setLimit] = useState(1);
@@ -195,25 +202,36 @@ export function AdditionalNumbers() {
                     </Button>
                   </div>
                 </form>
+            ) : canAdd ? (
+              <Button
+                variant="outline"
+                onClick={() => setShowForm(true)}
+                className="w-fit"
+              >
+                <Plus className="size-4" /> Adicionar número
+              </Button>
             ) : (
-              <div className="flex flex-col gap-2">
+              // Sem cota no plano: em vez de só desabilitar, oferece a
+              // contratação de um número adicional não-WABA (Evolution).
+              <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3">
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-sm font-medium text-foreground">
+                    Adicionar um número extra (sem WABA) — {NUMERO_ADICIONAL_PRECO}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Conecte um segundo número via WhatsApp comum (QR, sem conta
+                    oficial Meta) à mesma caixa de entrada. Você já usa {numbers.length} de{' '}
+                    {limit} número(s) do seu plano.
+                  </p>
+                </div>
                 <Button
-                  variant="outline"
-                  onClick={() => setShowForm(true)}
-                  disabled={!canAdd}
                   className="w-fit"
-                  title={
-                    !canAdd ? 'Limite atingido — peça a liberação à ADSon' : undefined
+                  onClick={() =>
+                    window.open(CONTRATAR_NUMERO_URL, '_blank', 'noopener,noreferrer')
                   }
                 >
-                  <Plus className="size-4" /> Adicionar número
+                  <Plus className="size-4" /> Solicitar número adicional
                 </Button>
-                {!canAdd && (
-                  <p className="text-xs text-amber-300/90">
-                    Você já usa o máximo de números do seu plano ({limit}). Para
-                    conectar mais, peça a liberação à ADSon.
-                  </p>
-                )}
               </div>
             )}
           </>

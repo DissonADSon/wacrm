@@ -386,7 +386,13 @@ export function WhatsAppConfig() {
   // Modo EvoHub: tela enxuta pro cliente — só o status da conexão e o número
   // (gerenciado pela agência). Esconde todo o setup Meta-direto (credenciais,
   // PIN, token de verificação, webhook e instruções de criar app na Meta).
-  if (EVOHUB_MODE) {
+  //
+  // Exceção (decisão ADSon): a tela enxuta só vale quando JÁ existe um número
+  // configurado. Enquanto a conta não tem número, mostramos o setup WABA
+  // completo (fluxo abaixo) — assim quem NÃO usa o método EvoHub da agência
+  // consegue cadastrar o WABA direto na Meta por conta própria. Depois de
+  // conectado, a tela volta ao modo gerenciado enxuto.
+  if (EVOHUB_MODE && config) {
     const connected = connectionStatus === 'connected';
     return (
       <section className="animate-in fade-in-50 duration-200">

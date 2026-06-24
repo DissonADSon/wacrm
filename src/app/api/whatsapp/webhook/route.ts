@@ -277,6 +277,7 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           config.user_id,
           decryptedAccessToken,
           config.id,
+          config.api_base ?? null,
         )
       }
     }
@@ -512,6 +513,10 @@ export async function processMessage(
   configOwnerUserId: string,
   accessToken: string,
   whatsappConfigId: string,
+  // Base da API do número que recebeu a mensagem (multi-número). NULL =
+  // base global do deploy. Repassada à resolução de mídia para baixar do
+  // provedor certo quando a conta tem números em bases diferentes.
+  apiBase: string | null,
 ) {
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
@@ -545,7 +550,7 @@ export async function processMessage(
 
   // Parse message content based on type
   const { contentText, mediaUrl, mediaType, interactiveReplyId } =
-    await parseMessageContent(message, accessToken)
+    await parseMessageContent(message, accessToken, apiBase)
 
   // Resolve swipe-reply context if present. A missing parent is fine —
   // we just store NULL and the UI renders the message without a quote.
@@ -720,7 +725,8 @@ export async function processMessage(
 
 async function parseMessageContent(
   message: WhatsAppMessage,
-  accessToken: string
+  accessToken: string,
+  apiBase: string | null,
 ): Promise<{
   contentText: string | null
   mediaUrl: string | null
@@ -742,12 +748,10 @@ async function parseMessageContent(
     mediaId: string
   ): Promise<string | null> => {
     try {
-      const info = await getMediaUrl({ mediaId, accessToken })
-      // [MEDIA-DEBUG TEMP — remover após diagnóstico] confirma que o
-      // EvoHub espelha o endpoint de mídia da Meta (GET /<mediaId>).
-      console.log(
-        `[MEDIA-DEBUG] getMediaUrl OK mediaId=${mediaId} mime=${info.mimeType} url=${(info.url || '').slice(0, 70)}`
-      )
+      // Verifica que a mídia é resolvível no provedor do número (EvoHub
+      // espelha o GET /<mediaId> da Meta). Só validamos aqui; o download
+      // real acontece sob demanda no proxy /api/whatsapp/media/<id>.
+      await getMediaUrl({ mediaId, accessToken, apiBase })
       return `/api/whatsapp/media/${mediaId}`
     } catch (error) {
       console.error(
@@ -765,17 +769,6 @@ async function parseMessageContent(
     mediaUrl: null,
     mediaType: null,
     interactiveReplyId: null,
-  }
-
-  // [MEDIA-DEBUG TEMP — remover após diagnóstico] Captura o payload bruto
-  // de mídia pra ver o formato exato que o EvoHub entrega (id? url? base64?).
-  if (['image', 'audio', 'video', 'document', 'sticker'].includes(message.type)) {
-    try {
-      const mediaPayload = (message as unknown as Record<string, unknown>)[message.type]
-      console.log(`[MEDIA-DEBUG] type=${message.type} payload=${JSON.stringify(mediaPayload)}`)
-    } catch {
-      /* noop */
-    }
   }
 
   switch (message.type) {

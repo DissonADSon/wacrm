@@ -994,6 +994,13 @@ function validateInteractiveHeaderFooter(
 export interface GetMediaUrlArgs {
   mediaId: string
   accessToken: string
+  /**
+   * Base da API por número (multi-número). Default = base global do deploy
+   * (`WHATSAPP_API_BASE` / Graph). Necessário quando uma conta tem números
+   * em provedores/bases diferentes (ex.: um EvoHub + um Evolution direto) —
+   * a mídia tem que ser resolvida na base do número que a recebeu.
+   */
+  apiBase?: string | null
 }
 
 /**
@@ -1003,8 +1010,9 @@ export interface GetMediaUrlArgs {
 export async function getMediaUrl(
   args: GetMediaUrlArgs
 ): Promise<{ url: string; mimeType: string }> {
-  const { mediaId, accessToken } = args
-  const response = await fetch(`${META_API_BASE}/${mediaId}`, {
+  const { mediaId, accessToken, apiBase } = args
+  const base = apiBase || META_API_BASE
+  const response = await fetch(`${base}/${mediaId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!response.ok) {

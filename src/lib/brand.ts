@@ -9,3 +9,9 @@ export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME?.trim() || "ADSon CRM";
 export const APP_DESCRIPTION =
   process.env.NEXT_PUBLIC_APP_DESCRIPTION?.trim() ||
   `${APP_NAME} — CRM para WhatsApp.`;
+
+// Versão do produto, exibida discretamente na UI (rodapé da marca na sidebar).
+// MANTER EM SINCRONIA com o campo "version" do package.json a cada release.
+// Como é client-visible, é hardcoded aqui em vez de lido do package.json em runtime.
+export const APP_VERSION =
+  process.env.NEXT_PUBLIC_APP_VERSION?.trim() || "1.0.0";

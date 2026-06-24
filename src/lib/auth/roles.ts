@@ -82,11 +82,21 @@ export function canEditSettings(role: AccountRole): boolean {
 
 /**
  * Owner / admin / agent: write operational data — send messages,
- * create contacts, move deals, run broadcasts, edit automations.
- * Viewers are read-only.
+ * create contacts, move deals, run broadcasts. Viewers are read-only.
  */
 export function canSendMessages(role: AccountRole): boolean {
   return hasMinRole(role, "agent");
+}
+
+/**
+ * Owner / admin: create, edit, activate, duplicate or delete
+ * automations. Automations run unattended and can message every
+ * contact, so editing them is a privileged (admin+) action — agents
+ * and viewers see them read-only. (Decisão ADSon: só administradores
+ * e proprietários editam automações; demais usuários apenas veem.)
+ */
+export function canEditAutomations(role: AccountRole): boolean {
+  return hasMinRole(role, "admin");
 }
 
 /**

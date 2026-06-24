@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { APP_NAME } from "@/lib/brand";
+import { APP_NAME, APP_VERSION } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
@@ -183,8 +183,13 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <MessageSquare className="h-4 w-4" />
             </div>
-            <span className="text-sm font-semibold text-foreground">
-              {account?.brand_name || APP_NAME}
+            <span className="flex flex-col leading-tight">
+              <span className="text-sm font-semibold text-foreground">
+                {account?.brand_name || APP_NAME}
+              </span>
+              <span className="text-[10px] font-medium text-muted-foreground">
+                v{APP_VERSION}
+              </span>
             </span>
           </Link>
           <button

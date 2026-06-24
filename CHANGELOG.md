@@ -9,6 +9,61 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [1.0.0] — 2026-06-23 — Marco do produto ADSon CRM
+
+> **Em português** porque a partir desta versão o fork passa a ser o produto
+> **ADSon CRM**, ferramenta padrão da agência para clientes. O histórico do
+> template upstream (`ArnasDon/wacrm`) segue abaixo, em inglês, preservado.
+>
+> Registro completo do produto (instalações ativas, infra, backlog) em
+> **[`ADSON-CRM.md`](./ADSON-CRM.md)**.
+
+Primeira versão estável do **ADSon CRM**. Consolida o pacote de
+customizações feito sobre o template wacrm e já rodando em produção em
+**duas instalações** (`crm.adsonsolucoes.com.br` e `crm.johari.com.br`,
+mesma stack/serviço). Versão saltou de `0.2.2` (herdada do template) para
+`1.0.0` para marcar o produto próprio.
+
+### Adicionado (ADSon)
+
+- **Rebrand + white-label.** Marca centralizada em `src/lib/brand.ts`
+  (`APP_NAME`, default "ADSon CRM"), sobrescrevível por instância via
+  `NEXT_PUBLIC_APP_NAME`. White-label por conta via `accounts.brand_name`
+  (migration 024), exibido pós-login no lugar do nome padrão. Versão do
+  produto exibida na sidebar (`APP_VERSION`).
+- **Tradução PT-BR completa.** Toda a UI visível (labels, placeholders,
+  toasts, gatilhos, datas/locale, status, moedas, seeds). Enums, slugs e
+  valores de API/DB preservados. Glossário em `TRADUCAO-PTBR.md`.
+- **Modo EvoHub.** Flag de build `NEXT_PUBLIC_WHATSAPP_PROVIDER=evohub`
+  simplifica a tela de WhatsApp (só status + número, esconde setup Meta
+  direto). wacrm fala o "dialeto" Cloud API e aponta `WHATSAPP_API_BASE`
+  para o proxy EvoHub; webhook aceita `EVOLUTION_HUB_WEBHOOK_SECRET`.
+- **Multi-número (Fase 1 + 2).** `config-resolver.ts`, `sender.ts`
+  (router por provider) e `evolution-api.ts` permitem N números por conta
+  (WABA via EvoHub + número extra via Evolution/Baileys direto). UI em
+  `additional-numbers.tsx`, limite por `accounts.whatsapp_numbers_limit`,
+  botão "Adicionar número" sempre visível (desabilitado no limite).
+  Migration 025 **aplicada**. O proxy de mídia (`media/[mediaId]/route.ts`)
+  resolve o número certo via `resolveWhatsappConfig` (sem o `.single()` que
+  estourava com 2+ números) e baixa a mídia na `api_base` do número.
+- **Mídia no chat.** Lightbox (imagem em tela cheia), colar screenshot
+  (Ctrl+V no composer), limite de documento 16→95 MB (migration 026).
+- **Campo Cidade nativo** em contatos (migration 027): cadastro, lista,
+  detalhe, import CSV e variável de template.
+- **Campos customizados em oportunidades** (migration 028:
+  `deal_custom_fields` + `deal_custom_field_values`, RLS por conta).
+- **Variáveis de template** (migration 029:
+  `message_templates.variable_mappings`): mapeia `{{N}}` → fonte
+  (nome, telefone, cidade, campo custom).
+- **Ação de automação "Criar oportunidade"** com dropdown de pipeline +
+  etapa.
+
+> ⚠️ **Migration required.** Aplicadas em produção: 024, 025, 026, 027,
+> 028, 029 (confirmado em 23/06). Falta apenas validar 2 números na MESMA
+> conta end-to-end (hoje cada conta tem 1). Ver `PLANO-MULTINUMERO.md`.
+
+---
+
 ## [Unreleased]
 
 Multi-user accounts ship. Every wacrm install is multi-tenant on the

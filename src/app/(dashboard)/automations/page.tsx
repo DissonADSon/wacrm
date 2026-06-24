@@ -59,7 +59,10 @@ const TEMPLATE_ICON: Record<TemplateSlug, typeof Zap> = {
 
 export default function AutomationsPage() {
   const router = useRouter()
-  const canCreate = useCan("send-messages")
+  // Só admin/owner editam automações (decisão ADSon). Agentes/viewers
+  // veem a lista, abrem em leitura e consultam logs, mas não criam,
+  // ativam/pausam, editam, duplicam nem excluem.
+  const canEdit = useCan("edit-automations")
   const [automations, setAutomations] = useState<Automation[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Automation | null>(null)
@@ -154,7 +157,7 @@ export default function AutomationsPage() {
     )
   }
 
-  const showTemplates = automations.length < 3
+  const showTemplates = canEdit && automations.length < 3
 
   return (
     <div className="space-y-6">
@@ -166,8 +169,8 @@ export default function AutomationsPage() {
           </p>
         </div>
         <GatedButton
-          canAct={canCreate}
-          gateReason="criar automações"
+          canAct={canEdit}
+          gateReason="criar automações (apenas administradores e proprietários)"
           onClick={() => router.push("/automations/new")}
           className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
@@ -217,6 +220,7 @@ export default function AutomationsPage() {
             <AutomationCard
               key={a.id}
               automation={a}
+              canEdit={canEdit}
               onToggle={(next) => toggleActive(a, next)}
               onEdit={() => router.push(`/automations/${a.id}/edit`)}
               onDuplicate={() => duplicate(a)}
@@ -262,6 +266,7 @@ export default function AutomationsPage() {
 
 function AutomationCard({
   automation,
+  canEdit,
   onToggle,
   onEdit,
   onDuplicate,
@@ -269,6 +274,7 @@ function AutomationCard({
   onDelete,
 }: {
   automation: Automation
+  canEdit: boolean
   onToggle: (next: boolean) => void
   onEdit: () => void
   onDuplicate: () => void
@@ -323,11 +329,19 @@ function AutomationCard({
         </button>
 
         <div className="flex items-center gap-3">
-          <Switch
-            checked={automation.is_active}
-            onCheckedChange={(v) => onToggle(!!v)}
-            aria-label={automation.is_active ? "Desativar" : "Ativar"}
-          />
+          {/* Ativar/pausar é ação privilegiada — só admin/owner. Viewers
+              e agentes veem o estado (badge "ativa" no nome), sem o toggle. */}
+          {canEdit ? (
+            <Switch
+              checked={automation.is_active}
+              onCheckedChange={(v) => onToggle(!!v)}
+              aria-label={automation.is_active ? "Desativar" : "Ativar"}
+            />
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {automation.is_active ? "Ativa" : "Pausada"}
+            </span>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -337,23 +351,31 @@ function AutomationCard({
               <MoreVertical className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onEdit}>
-                <Pencil className="h-4 w-4" />
-                Editar
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onDuplicate}>
-                <Copy className="h-4 w-4" />
-                Duplicar
-              </DropdownMenuItem>
+              {canEdit && (
+                <>
+                  <DropdownMenuItem onClick={onEdit}>
+                    <Pencil className="h-4 w-4" />
+                    Editar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={onDuplicate}>
+                    <Copy className="h-4 w-4" />
+                    Duplicar
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuItem onClick={onLogs}>
                 <FileText className="h-4 w-4" />
                 Ver logs
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                <Trash2 className="h-4 w-4" />
-                Excluir
-              </DropdownMenuItem>
+              {canEdit && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                    <Trash2 className="h-4 w-4" />
+                    Excluir
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

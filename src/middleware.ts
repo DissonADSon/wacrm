@@ -60,9 +60,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // API routes that need auth (not webhooks)
+  // API routes that need auth (not webhooks). Webhooks são públicos: o
+  // provedor (Meta/EvoHub OU Evolution) faz POST sem sessão.
+  // ⚠️ Usar `includes('webhook')` SEM a barra: o webhook oficial é
+  // `/api/whatsapp/webhook` (casa com '/webhook'), mas o do Evolution é
+  // `/api/whatsapp/evolution-webhook` — que tem '-webhook', NÃO '/webhook'.
+  // A versão com barra bloqueava o evolution-webhook com 401, então o
+  // recebimento por números Evolution nunca chegava ao CRM.
   if (!user && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
-      !request.nextUrl.pathname.includes('/webhook')) {
+      !request.nextUrl.pathname.includes('webhook')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

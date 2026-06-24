@@ -10,13 +10,30 @@ import {
   validateStepsForActivation,
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
+import { canEditAutomations, isAccountRole } from '@/lib/auth/roles'
 
-async function requireUser() {
+// Tenancy: automações são da CONTA (account_id), não do usuário que as
+// criou (migration 017). Resolvemos o account_id + papel do requester e
+// escopamos por conta — assim qualquer membro VÊ a automação de um colega
+// (antes filtrava por user_id e dava 404 ao abrir), mas só admin/owner
+// EDITA (canEditAutomations).
+async function requireUserAccount() {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  return user
+  if (!user) return { user: null, accountId: null, role: null }
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('account_id, account_role')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  const role = isAccountRole(profile?.account_role) ? profile.account_role : null
+  return {
+    user,
+    accountId: (profile?.account_id as string | undefined) ?? null,
+    role,
+  }
 }
 
 export async function GET(
@@ -24,15 +41,20 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const user = await requireUser()
+  const { user, accountId } = await requireUserAccount()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!accountId)
+    return NextResponse.json(
+      { error: 'Your profile is not linked to an account.' },
+      { status: 403 },
+    )
 
   const admin = supabaseAdmin()
   const { data: automation, error } = await admin
     .from('automations')
     .select('*')
     .eq('id', id)
-    .eq('user_id', user.id)
+    .eq('account_id', accountId)
     .maybeSingle()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -47,22 +69,32 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const user = await requireUser()
+  const { user, accountId, role } = await requireUserAccount()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!accountId)
+    return NextResponse.json(
+      { error: 'Your profile is not linked to an account.' },
+      { status: 403 },
+    )
+  if (!role || !canEditAutomations(role))
+    return NextResponse.json(
+      { error: 'Apenas administradores e proprietários podem editar automações.' },
+      { status: 403 },
+    )
 
   const body = await request.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
 
   const admin = supabaseAdmin()
 
-  // Ownership check before we touch anything. Load the fields we need
-  // to compute the post-patch "effective" state for validation.
+  // Ownership check before we touch anything (escopo por CONTA). Load the
+  // fields we need to compute the post-patch "effective" state.
   const { data: existing } = await admin
     .from('automations')
-    .select('id, user_id, is_active, trigger_type, trigger_config')
+    .select('id, account_id, is_active, trigger_type, trigger_config')
     .eq('id', id)
     .maybeSingle()
-  if (!existing || existing.user_id !== user.id) {
+  if (!existing || existing.account_id !== accountId) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
@@ -125,14 +157,24 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const user = await requireUser()
+  const { user, accountId, role } = await requireUserAccount()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!accountId)
+    return NextResponse.json(
+      { error: 'Your profile is not linked to an account.' },
+      { status: 403 },
+    )
+  if (!role || !canEditAutomations(role))
+    return NextResponse.json(
+      { error: 'Apenas administradores e proprietários podem editar automações.' },
+      { status: 403 },
+    )
 
   const { error } = await supabaseAdmin()
     .from('automations')
     .delete()
     .eq('id', id)
-    .eq('user_id', user.id)
+    .eq('account_id', accountId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

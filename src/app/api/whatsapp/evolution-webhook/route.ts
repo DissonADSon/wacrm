@@ -106,7 +106,7 @@ export async function POST(request: Request) {
   // Resolve a config Evolution pela instância (única — migration 025).
   const { data: config, error: cfgErr } = await supabaseAdmin()
     .from('whatsapp_config')
-    .select('id, account_id, user_id, access_token, evolution_instance')
+    .select('id, account_id, user_id, access_token, evolution_instance, api_base')
     .eq('evolution_instance', instance)
     .maybeSingle()
   if (cfgErr || !config) {
@@ -139,6 +139,7 @@ export async function POST(request: Request) {
         config.user_id,
         decrypt(config.access_token),
         config.id,
+        config.api_base ?? null,
       )
     } catch (err) {
       console.error('[evolution-webhook] processMessage falhou:', err)

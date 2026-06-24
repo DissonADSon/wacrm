@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { resolveWhatsappConfig } from '@/lib/whatsapp/config-resolver'
 
 export async function GET(
   request: Request,
@@ -48,24 +48,40 @@ export async function GET(
       )
     }
 
-    // Fetch and decrypt WhatsApp config
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    // Resolve which WhatsApp number this media belongs to. Multi-número:
+    // a conta pode ter mais de um número (UNIQUE(account_id) caiu na
+    // migration 025), então `.single()` por account_id estourava PGRST116.
+    // O proxy só recebe o mediaId, então descobrimos a conversa que o
+    // referencia (RLS garante que só some a da própria conta) e resolvemos
+    // a config DAQUELE número — incluindo o `api_base` certo, que importa
+    // quando os números estão em provedores/bases diferentes. Sem conversa
+    // casada, cai no número default da conta (idêntico ao caso 1-número).
+    const { data: msgRow } = await supabase
+      .from('messages')
+      .select('conversation_id')
+      .eq('media_url', `/api/whatsapp/media/${mediaId}`)
+      .limit(1)
+      .maybeSingle()
 
-    if (configError || !config) {
+    const config = await resolveWhatsappConfig(supabase, accountId, {
+      conversationId: msgRow?.conversation_id ?? null,
+    })
+
+    if (!config) {
       return NextResponse.json(
         { error: 'WhatsApp not configured' },
         { status: 400 }
       )
     }
 
-    const accessToken = decrypt(config.access_token)
+    const accessToken = config.accessToken
 
-    // Get the download URL from Meta
-    const mediaInfo = await getMediaUrl({ mediaId, accessToken })
+    // Get the download URL from Meta (na base do número que recebeu a mídia)
+    const mediaInfo = await getMediaUrl({
+      mediaId,
+      accessToken,
+      apiBase: config.apiBase,
+    })
 
     // Download the binary data
     const { buffer, contentType } = await downloadMedia({

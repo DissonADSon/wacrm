@@ -1,7 +1,8 @@
 "use client"
 
 import { useMemo } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { ShieldAlert } from "lucide-react"
 
 import {
   AutomationBuilder,
@@ -9,10 +10,13 @@ import {
   type BuilderStep,
 } from "@/components/automations/automation-builder"
 import { AUTOMATION_TEMPLATES, type TemplateSlug } from "@/lib/automations/templates"
+import { useCan } from "@/hooks/use-can"
 import type { AutomationStepType, AutomationTriggerType } from "@/types"
 
 export default function NewAutomationPage() {
   const params = useSearchParams()
+  const router = useRouter()
+  const canEdit = useCan("edit-automations")
   const template = params.get("template") as TemplateSlug | null
 
   const initial: BuilderInitial = useMemo(() => {
@@ -45,6 +49,26 @@ export default function NewAutomationPage() {
       steps: [],
     }
   }, [template])
+
+  if (!canEdit) {
+    return (
+      <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center">
+        <ShieldAlert className="h-8 w-8 text-muted-foreground" />
+        <p className="text-sm font-medium text-foreground">
+          Apenas administradores e proprietários podem criar automações.
+        </p>
+        <p className="max-w-sm text-xs text-muted-foreground">
+          Você pode visualizar as automações da conta e seus logs na lista.
+        </p>
+        <button
+          onClick={() => router.push("/automations")}
+          className="text-sm text-primary hover:text-primary/80"
+        >
+          Voltar para Automações
+        </button>
+      </div>
+    )
+  }
 
   return <AutomationBuilder initial={initial} />
 }

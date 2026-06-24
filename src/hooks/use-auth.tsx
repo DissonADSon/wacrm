@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
 import {
+  canEditAutomations as canEditAutomationsFor,
   canEditSettings as canEditSettingsFor,
   canManageMembers as canManageMembersFor,
   canSendMessages as canSendMessagesFor,
@@ -104,6 +105,8 @@ interface AuthContextValue {
   canEditSettings: boolean;
   /** True if the caller can send messages and edit operational data (agent+). */
   canSendMessages: boolean;
+  /** True if the caller can create/edit/activate/delete automations (admin+). */
+  canEditAutomations: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -313,6 +316,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canManageMembers: role ? canManageMembersFor(role) : false,
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
+      canEditAutomations: role ? canEditAutomationsFor(role) : false,
     };
   }, [profile?.account_role, profile?.account_id]);
 
@@ -366,6 +370,7 @@ export function useAuth(): AuthContextValue {
       canManageMembers: false,
       canEditSettings: false,
       canSendMessages: false,
+      canEditAutomations: false,
     };
   }
   return ctx;

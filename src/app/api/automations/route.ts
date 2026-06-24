@@ -7,6 +7,7 @@ import {
   validateStepsForActivation,
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
+import { canEditAutomations, isAccountRole } from '@/lib/auth/roles'
 
 export async function GET() {
   const supabase = await createClient()
@@ -35,13 +36,20 @@ export async function POST(request: Request) {
   // even though the admin client bypasses RLS.
   const { data: profile } = await supabase
     .from('profiles')
-    .select('account_id')
+    .select('account_id, account_role')
     .eq('user_id', user.id)
     .single()
   const accountId = profile?.account_id as string | undefined
   if (!accountId) {
     return NextResponse.json(
       { error: 'Your profile is not linked to an account.' },
+      { status: 403 },
+    )
+  }
+  const role = isAccountRole(profile?.account_role) ? profile.account_role : null
+  if (!role || !canEditAutomations(role)) {
+    return NextResponse.json(
+      { error: 'Apenas administradores e proprietários podem editar automações.' },
       { status: 403 },
     )
   }
