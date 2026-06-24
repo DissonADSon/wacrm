@@ -103,9 +103,11 @@ existem e já há 2 números cadastrados: Johari `evohub` e demo Disson `evoluti
 
 Itens abertos, base para as próximas frentes. Marcar prioridade ao acionar.
 
-### 🐞 Bugs reportados pela Johari (24/06 — Michelle, `JOH-20260624-1432-RGR`)
+### 🐞 Bugs reportados pela Johari (24/06 — Michelle, `JOH-20260624-1432-RGR`) — ✅ CORRIGIDOS + DEPLOYADOS (commit `cf86ab4`, imagem `f17973c6`)
 > Diagnóstico de causa-raiz com arquivo:linha. Rastreio do conserto em `_CLIENTES/Johari/manutencao.md`.
-- [ ] **#1 Inbox — várias conversas para o mesmo contato (P0, alta).** Corrida TOCTOU em
+> **Status 24/06:** #1 (código + migration 030 aplicada — 0 duplicatas, UNIQUE ativa, 59→52 conversas), #2, #3 todos no ar. #4 (upload Amanda): descartado account_id (correto) e bucket (100MB); mensagens de erro melhoradas — falta a Amanda informar a msg exata + tipo/tamanho do arquivo p/ cravar (MIME HEIC/MOV vs upload >50MB).
+> **+ Blindagem deployada:** guarda anti-flood por instância no evolution-webhook, status leve (fromMe+de-dup), `/api/healthz` + healthcheck independente do Supabase, resource limits (CPU 1.5/Mem 1GB). Pré-req p/ reativar MESSAGES_UPDATE em alto volume (0798): processamento assíncrono (backlog).
+- [x] **#1 Inbox — várias conversas para o mesmo contato (P0, alta).** Corrida TOCTOU em
   `findOrCreateConversation` (`api/whatsapp/webhook/route.ts:949-986`): SELECT `.single()` + INSERT
   sem retry de unique-violation; mensagem fragmentada chega como upserts concorrentes → N conversas.
   Sem `UNIQUE(account_id,contact_id)` em `conversations` (`migrations/001:140-154`); `.single()` quebra
