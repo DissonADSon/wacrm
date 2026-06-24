@@ -69,7 +69,7 @@ export async function middleware(request: NextRequest) {
   // recebimento por números Evolution nunca chegava ao CRM.
   if (!user && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
       !request.nextUrl.pathname.includes('webhook')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
   return supabaseResponse
