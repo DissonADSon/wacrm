@@ -32,7 +32,7 @@ export async function POST(request: Request) {
 
     if (authError || !user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Não autorizado' },
         { status: 401 }
       )
     }
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     const accountId = profile?.account_id as string | undefined
     if (!accountId) {
       return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
+        { error: 'Seu perfil não está vinculado a uma conta.' },
         { status: 403 },
       )
     }
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
       content_text.length > 1024
     ) {
       return NextResponse.json(
-        { error: 'Caption exceeds the 1024-character limit' },
+        { error: 'A legenda excede o limite de 1024 caracteres' },
         { status: 400 }
       )
     }
@@ -141,7 +141,7 @@ export async function POST(request: Request) {
 
     if (convError || !conversation) {
       return NextResponse.json(
-        { error: 'Conversation not found' },
+        { error: 'Conversa não encontrada' },
         { status: 404 }
       )
     }
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
     const contact = conversation.contact
     if (!contact?.phone) {
       return NextResponse.json(
-        { error: 'Contact phone number not found' },
+        { error: 'Telefone do contato não encontrado' },
         { status: 400 }
       )
     }
@@ -158,7 +158,7 @@ export async function POST(request: Request) {
     const sanitizedPhone = sanitizePhoneForMeta(contact.phone)
     if (!isValidE164(sanitizedPhone)) {
       return NextResponse.json(
-        { error: 'Invalid phone number format' },
+        { error: 'Formato de telefone inválido' },
         { status: 400 }
       )
     }
@@ -173,7 +173,7 @@ export async function POST(request: Request) {
 
     if (!cfg) {
       return NextResponse.json(
-        { error: 'WhatsApp not configured. Please set up your WhatsApp integration first.' },
+        { error: 'WhatsApp não configurado. Configure a integração do WhatsApp primeiro.' },
         { status: 400 }
       )
     }
@@ -398,7 +398,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error in WhatsApp send POST:', error)
     return NextResponse.json(
-      { error: 'Failed to send message' },
+      { error: 'Falha ao enviar a mensagem' },
       { status: 500 }
     )
   }

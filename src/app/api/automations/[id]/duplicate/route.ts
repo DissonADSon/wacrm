@@ -12,7 +12,7 @@ export async function POST(
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   // Escopo por CONTA (migration 017): qualquer membro pode duplicar uma
   // automação da conta, não só quem a criou.
@@ -24,7 +24,7 @@ export async function POST(
   const accountId = profile?.account_id as string | undefined
   if (!accountId)
     return NextResponse.json(
-      { error: 'Your profile is not linked to an account.' },
+      { error: 'Seu perfil não está vinculado a uma conta.' },
       { status: 403 },
     )
   const role = isAccountRole(profile?.account_role) ? profile.account_role : null
@@ -42,7 +42,7 @@ export async function POST(
     .eq('account_id', accountId)
     .maybeSingle()
   if (origErr) return NextResponse.json({ error: origErr.message }, { status: 500 })
-  if (!original) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!original) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
   const { data: copy, error: copyErr } = await admin
     .from('automations')
@@ -60,7 +60,7 @@ export async function POST(
     .select()
     .single()
   if (copyErr || !copy) {
-    return NextResponse.json({ error: copyErr?.message ?? 'copy failed' }, { status: 500 })
+    return NextResponse.json({ error: copyErr?.message ?? 'falha ao copiar' }, { status: 500 })
   }
 
   const { data: steps } = await admin

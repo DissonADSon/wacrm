@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   }
   const supplied = request.headers.get('x-cron-secret')
   if (supplied !== expected) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
   const admin = supabaseAdmin()

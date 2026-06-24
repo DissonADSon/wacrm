@@ -22,7 +22,7 @@ async function requireUser(): Promise<
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) {
-    return { ok: false, status: 401, body: { error: 'Unauthorized' } }
+    return { ok: false, status: 401, body: { error: 'Não autorizado' } }
   }
   return { ok: true, userId: user.id, supabase }
 }
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   const accountId = profile?.account_id as string | undefined
   if (!accountId) {
     return NextResponse.json(
-      { error: 'Your profile is not linked to an account.' },
+      { error: 'Seu perfil não está vinculado a uma conta.' },
       { status: 403 },
     )
   }
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
       }
     | null
   if (!body) {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
 
   const admin = supabaseAdmin()
@@ -161,7 +161,7 @@ export async function POST(request: Request) {
     .single()
   if (error || !data) {
     return NextResponse.json(
-      { error: error?.message ?? 'insert failed' },
+      { error: error?.message ?? 'falha ao inserir' },
       { status: 500 },
     )
   }

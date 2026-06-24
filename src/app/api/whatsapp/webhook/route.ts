@@ -88,7 +88,7 @@ export async function GET(request: Request) {
 
     if (mode !== 'subscribe' || !challenge || !verifyToken) {
       return NextResponse.json(
-        { error: 'Missing verification parameters' },
+        { error: 'Parâmetros de verificação ausentes' },
         { status: 400 }
       )
     }
@@ -101,7 +101,7 @@ export async function GET(request: Request) {
     if (configError || !configs) {
       console.error('Error fetching configs for verification:', configError)
       return NextResponse.json(
-        { error: 'Verification failed' },
+        { error: 'Falha na verificação' },
         { status: 403 }
       )
     }
@@ -148,13 +148,13 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(
-      { error: 'Verification token mismatch' },
+      { error: 'Token de verificação não confere' },
       { status: 403 }
     )
   } catch (error) {
     console.error('Error in webhook GET verification:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Erro interno do servidor' },
       { status: 500 }
     )
   }
@@ -172,14 +172,14 @@ export async function POST(request: Request) {
     // loudly if a misconfiguration causes signatures to stop matching,
     // rather than silently eating events.
     console.warn('[webhook] rejected request with invalid signature')
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 })
   }
 
   let body: { entry?: WhatsAppWebhookEntry[] }
   try {
     body = JSON.parse(rawBody)
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
 
   // Process asynchronously so we can ack Meta within their timeout.

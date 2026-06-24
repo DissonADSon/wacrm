@@ -71,7 +71,7 @@ export async function GET() {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     const accountId = await resolveAccountId(supabase, user.id)
@@ -174,13 +174,13 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     const accountId = await resolveAccountId(supabase, user.id)
     if (!accountId) {
       return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
+        { error: 'Seu perfil não está vinculado a uma conta.' },
         { status: 403 },
       )
     }
@@ -198,7 +198,7 @@ export async function POST(request: Request) {
     if (pin !== undefined && pin !== null && pin !== '') {
       if (typeof pin !== 'string' || !/^\d{6}$/.test(pin)) {
         return NextResponse.json(
-          { error: 'PIN must be exactly 6 digits.' },
+          { error: 'O PIN deve ter exatamente 6 dígitos.' },
           { status: 400 }
         )
       }
@@ -221,7 +221,7 @@ export async function POST(request: Request) {
     if (claimedError) {
       console.error('Error checking phone_number_id ownership:', claimedError)
       return NextResponse.json(
-        { error: 'Failed to validate configuration' },
+        { error: 'Falha ao validar a configuração' },
         { status: 500 }
       )
     }
@@ -375,7 +375,7 @@ export async function POST(request: Request) {
       if (updateError) {
         console.error('Error updating whatsapp_config:', updateError)
         return NextResponse.json(
-          { error: 'Failed to update configuration' },
+          { error: 'Falha ao atualizar a configuração' },
           { status: 500 }
         )
       }
@@ -395,7 +395,7 @@ export async function POST(request: Request) {
       if (insertError) {
         console.error('Error inserting whatsapp_config:', insertError)
         return NextResponse.json(
-          { error: 'Failed to save configuration' },
+          { error: 'Falha ao salvar a configuração' },
           { status: 500 }
         )
       }
@@ -427,7 +427,7 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error('Error in WhatsApp config POST:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
 }
 
@@ -448,13 +448,13 @@ export async function DELETE() {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     const accountId = await resolveAccountId(supabase, user.id)
     if (!accountId) {
       return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
+        { error: 'Seu perfil não está vinculado a uma conta.' },
         { status: 403 },
       )
     }
@@ -467,7 +467,7 @@ export async function DELETE() {
     if (deleteError) {
       console.error('Error deleting whatsapp_config:', deleteError)
       return NextResponse.json(
-        { error: 'Failed to delete configuration' },
+        { error: 'Falha ao excluir a configuração' },
         { status: 500 }
       )
     }
@@ -475,6 +475,6 @@ export async function DELETE() {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error in WhatsApp config DELETE:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
 }

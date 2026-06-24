@@ -43,7 +43,7 @@ async function getCtx() {
 
 export async function GET() {
   const ctx = await getCtx()
-  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   const { data: numbers } = await ctx.supabase
     .from('whatsapp_config')
@@ -65,7 +65,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const ctx = await getCtx()
-  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   if (!isAccountRole(ctx.role) || !canManageMembers(ctx.role)) {
     return NextResponse.json(

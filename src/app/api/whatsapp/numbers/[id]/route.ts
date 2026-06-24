@@ -14,7 +14,7 @@ export async function DELETE(
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser()
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (authErr || !user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   const { data: profile } = await supabase
     .from('profiles')

@@ -22,6 +22,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
+import { isValidE164 } from '@/lib/whatsapp/phone-utils'
 import {
   processMessage,
   type WhatsAppMessage,
@@ -37,61 +38,161 @@ function supabaseAdmin() {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
 
-/** Extrai o telefone (só dígitos) de um remoteJid tipo "5531...@s.whatsapp.net". */
+/** Extrai só dígitos do remoteJid/senderPn (ex.: "5531...:12@s.whatsapp.net" -> "5531..."). */
 function phoneFromJid(jid: string): string {
   return (jid || '').split('@')[0].split(':')[0].replace(/\D/g, '')
 }
 
 /**
- * Normaliza a mensagem do Evolution (data.message) para o WhatsAppMessage
- * interno. Texto é tratado nativamente; mídia entra como placeholder textual
- * (com legenda) até o download de mídia Evolution ser implementado.
+ * Desempacota mensagens "embrulhadas" do Baileys — temporárias (ephemeral),
+ * visualização única (viewOnce) e documento-com-legenda. O conteúdo real fica
+ * um nível abaixo; sem desempacotar, foto/texto temporário some no fallback.
+ */
+function unwrapMessage(m: Json): Json {
+  let cur = m ?? {}
+  for (let i = 0; i < 5; i++) {
+    const inner =
+      cur.ephemeralMessage ||
+      cur.viewOnceMessage ||
+      cur.viewOnceMessageV2 ||
+      cur.viewOnceMessageV2Extension ||
+      cur.documentWithCaptionMessage
+    if (inner && inner.message) cur = inner.message
+    else break
+  }
+  return cur
+}
+
+/**
+ * Normaliza um evento do Evolution (Baileys) para o WhatsAppMessage interno.
+ * O CRM nasceu para a Meta Cloud API; o Baileys difere bastante, então aqui:
+ * filtra JIDs de sistema (grupo/canal/lista/status), resolve o número real
+ * (LID via senderPn), desempacota mensagens aninhadas e mapeia os tipos
+ * relevantes. Tipos não suportados são DESCARTADOS (return null) em vez de
+ * virar lixo "[mensagem]" que polui inbox/contatos e dispara automações à toa.
  */
 function normalizeEvolutionMessage(data: Json): WhatsAppMessage | null {
   const key = data?.key ?? {}
   const remoteJid: string = key.remoteJid || ''
-  // Ignora mensagens de GRUPO. O CRM é atendimento 1:1; o id do grupo
-  // (`@g.us`, ~18 dígitos) não é telefone e quebra o envio da resposta
-  // com "Invalid phone number format".
-  if (remoteJid.endsWith('@g.us')) return null
-  const m = data?.message ?? {}
-  // O WhatsApp mascara o remetente como `@lid` (LID) em vários casos de
-  // privacidade — aí `remoteJid` é um identificador interno, NÃO o telefone.
-  // O número real vem em `senderPn` (sender phone number). Preferir senderPn;
-  // só cair pro remoteJid quando não houver. Sem isso, o contato é criado com
-  // o LID no lugar do número e a RESPOSTA falha ("number exists:false").
-  const from = phoneFromJid(key.senderPn || remoteJid)
-  if (!from) return null
+  const isUser = remoteJid.endsWith('@s.whatsapp.net')
+  const isLid = remoteJid.endsWith('@lid')
+  // Allowlist: só conversa 1:1 real. Barra grupo (@g.us), canal (@newsletter),
+  // lista de transmissão (@broadcast) e status (status@broadcast) — esses IDs
+  // não são telefone; virariam contato/conversa lixo + auto-resposta inválida.
+  if (!isUser && !isLid) return null
+  // Número real: em @lid o telefone vem em senderPn; sem ele NÃO usamos o LID
+  // (não é telefone — a resposta falharia com "number exists:false"). Descarta.
+  const senderPn: string = key.senderPn || key.participantPn || ''
+  if (isLid && !senderPn) return null
+  const from = phoneFromJid(senderPn || remoteJid)
+  // Rede de segurança: só segue se o resultado parece um telefone E.164
+  // (descarta resíduos de IDs de sistema que escapem da allowlist).
+  if (!from || !isValidE164(from)) return null
 
-  const base = {
-    id: key.id || `evo_${data?.messageTimestamp ?? ''}`,
-    from,
-    timestamp: String(data?.messageTimestamp ?? ''),
+  // Timestamp robusto: messageTimestamp ausente/zero não pode virar Date(NaN),
+  // que estouraria e descartaria a mensagem no insert.
+  const tsNum = Number(data?.messageTimestamp)
+  const timestamp = String(
+    Number.isFinite(tsNum) && tsNum > 0 ? tsNum : Math.floor(Date.now() / 1000),
+  )
+  const base = { id: key.id || `evo_${timestamp}`, from, timestamp }
+
+  const m = unwrapMessage(data?.message ?? {})
+
+  // Reação do cliente → roteada para message_reactions (não vira mensagem nova).
+  if (m.reactionMessage) {
+    return {
+      ...base,
+      type: 'reaction',
+      reaction: { message_id: m.reactionMessage.key?.id || '', emoji: m.reactionMessage.text || '' },
+    }
   }
+  // Edição/revoke/efêmero de protocolo — não é conteúdo. Descarta.
+  if (m.protocolMessage) return null
 
-  // Texto puro / texto estendido (reply, link preview).
+  // Reply citado (swipe-reply): id da mensagem citada vem em contextInfo.
+  const ctx =
+    m.extendedTextMessage?.contextInfo ||
+    m.imageMessage?.contextInfo ||
+    m.videoMessage?.contextInfo ||
+    m.documentMessage?.contextInfo ||
+    m.audioMessage?.contextInfo
+  const ctxField = ctx?.stanzaId ? { context: { id: ctx.stanzaId as string } } : {}
+
+  // Texto puro / estendido (reply, link preview).
   const text = m.conversation ?? m.extendedTextMessage?.text
   if (typeof text === 'string') {
-    return { ...base, type: 'text', text: { body: text } }
+    return { ...base, ...ctxField, type: 'text', text: { body: text } }
   }
 
-  // Mídia — placeholder textual por ora (Evolution não dá media_id da Meta).
-  const mediaLabel = (() => {
+  // Localização.
+  const loc = m.locationMessage || m.liveLocationMessage
+  if (loc && (loc.degreesLatitude != null || loc.degreesLongitude != null)) {
+    return {
+      ...base,
+      ...ctxField,
+      type: 'location',
+      location: {
+        latitude: Number(loc.degreesLatitude) || 0,
+        longitude: Number(loc.degreesLongitude) || 0,
+        name: loc.name,
+        address: loc.address,
+      },
+    }
+  }
+
+  // Resposta de botão / lista (interactive) — alimenta o engine de Flows.
+  const btn = m.buttonsResponseMessage || m.templateButtonReplyMessage
+  if (btn) {
+    return {
+      ...base,
+      ...ctxField,
+      type: 'interactive',
+      interactive: {
+        type: 'button_reply',
+        button_reply: { id: btn.selectedButtonId || btn.selectedId || '', title: btn.selectedDisplayText || '' },
+      },
+    }
+  }
+  const list = m.listResponseMessage
+  if (list?.singleSelectReply) {
+    return {
+      ...base,
+      ...ctxField,
+      type: 'interactive',
+      interactive: {
+        type: 'list_reply',
+        list_reply: { id: list.singleSelectReply.selectedRowId || '', title: list.title || '' },
+      },
+    }
+  }
+
+  // Contato (vCard) — sem tipo nativo no CRM; entra como texto com o nome.
+  if (m.contactMessage) {
+    const body = `[contato] ${m.contactMessage.displayName || ''}`.trim()
+    return { ...base, ...ctxField, type: 'text', text: { body } }
+  }
+
+  // Mídia — placeholder textual por ora (download de mídia Evolution é o
+  // próximo passo; o Baileys não usa media_id da Meta). Áudio (PTT) vem como
+  // audioMessage com ptt:true, não como tipo separado.
+  const mediaLabel: [string, string | undefined] | null = (() => {
     if (m.imageMessage) return ['imagem', m.imageMessage.caption]
     if (m.videoMessage) return ['vídeo', m.videoMessage.caption]
-    if (m.audioMessage || m.pttMessage) return ['áudio', undefined]
-    if (m.documentMessage) return ['documento', m.documentMessage.fileName]
+    if (m.audioMessage) return ['áudio', undefined]
+    if (m.documentMessage) return ['documento', m.documentMessage.fileName || m.documentMessage.caption]
     if (m.stickerMessage) return ['figurinha', undefined]
     return null
   })()
   if (mediaLabel) {
     const [kind, caption] = mediaLabel
     const body = caption ? `[${kind}] ${caption}` : `[${kind}]`
-    return { ...base, type: 'text', text: { body } }
+    return { ...base, ...ctxField, type: 'text', text: { body } }
   }
 
-  // Tipos não tratados (localização, etc.) — registra como texto genérico.
-  return { ...base, type: 'text', text: { body: '[mensagem]' } }
+  // Tipo não suportado (enquete, etc.) — descarta em vez de criar "[mensagem]".
+  console.warn('[evolution-webhook] tipo não tratado, descartado:', Object.keys(m).join(','))
+  return null
 }
 
 export async function POST(request: Request) {
@@ -99,7 +200,7 @@ export async function POST(request: Request) {
   try {
     payload = await request.json()
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
 
   // Evolution manda eventos variados; só tratamos mensagens recebidas.
