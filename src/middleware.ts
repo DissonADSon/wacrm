@@ -77,6 +77,9 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // `api/healthz` fica FORA do middleware de propósito: o healthcheck do
+    // contêiner não pode passar por auth.getUser() (que toca o Supabase),
+    // senão deixa de ser um sinal independente de "processo vivo".
+    '/((?!api/healthz|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

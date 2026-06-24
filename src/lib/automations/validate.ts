@@ -92,9 +92,10 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       if (!nonEmpty(c.stage_id)) {
         issues.push({ path: `${path}.stage_id`, message: 'a etapa é obrigatória' })
       }
-      if (!nonEmpty(c.title)) {
-        issues.push({ path: `${path}.title`, message: 'o título é obrigatório' })
-      }
+      // `title` NÃO é obrigatório: o engine gera um padrão quando vazio
+      // (a coluna deals.title é NOT NULL). Exigir aqui era mais restritivo
+      // que o runtime e travava a ativação (bug Johari #3) mesmo com funil
+      // e etapa preenchidos.
       break
     case 'wait':
       if (typeof c.amount !== 'number' || !Number.isFinite(c.amount) || c.amount <= 0) {

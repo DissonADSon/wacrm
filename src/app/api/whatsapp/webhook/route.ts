@@ -952,17 +952,28 @@ async function findOrCreateConversation(
   contactId: string,
   whatsappConfigId: string,
 ) {
-  // Look for existing conversation in this account
-  const { data: existing, error: findError } = await supabaseAdmin()
-    .from('conversations')
-    .select('*')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .single()
-
-  if (!findError && existing) {
-    return existing
+  // Look for existing conversation in this account. `.limit(1)` + ordem por
+  // created_at (em vez de `.single()`) porque, enquanto houver duplicatas
+  // legadas (account_id, contact_id), `.single()` estouraria PGRST116 e
+  // AGRAVARIA o bug — caía no INSERT e criava ainda outra conversa. Pegamos
+  // sempre a MAIS ANTIGA (canônica), convergindo o atendimento numa só.
+  const findCanonical = async () => {
+    const { data: rows } = await supabaseAdmin()
+      .from('conversations')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('contact_id', contactId)
+      // Desempate por id igual ao da migration 030 (created_at ASC, id ASC):
+      // garante que app e migration elegem a MESMA canônica mesmo se duas
+      // duplicatas legadas tiverem created_at idêntico (janela pré-UNIQUE).
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .limit(1)
+    return rows?.[0] ?? null
   }
+
+  const existing = await findCanonical()
+  if (existing) return existing
 
   // Create new conversation. Same tenancy + audit split as
   // findOrCreateContact above.
@@ -978,6 +989,15 @@ async function findOrCreateConversation(
     .single()
 
   if (createError) {
+    // Perdeu a corrida: uma entrega concorrente (mensagem fragmentada chega
+    // como vários eventos quase simultâneos) criou a conversa entre o nosso
+    // SELECT e o INSERT, e o índice único (migration 030) rejeitou a
+    // duplicata. Re-resolve a existente em vez de criar outra ou derrubar a
+    // mensagem. (Espelha o findOrCreateContact.)
+    if (isUniqueViolation(createError)) {
+      const raced = await findCanonical()
+      if (raced) return raced
+    }
     console.error('Error creating conversation:', createError)
     return null
   }

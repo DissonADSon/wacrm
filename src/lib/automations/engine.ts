@@ -516,7 +516,9 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         pipeline_id: cfg.pipeline_id,
         stage_id: cfg.stage_id,
         contact_id: args.contactId,
-        title: interpolate(cfg.title, args),
+        // deals.title é NOT NULL e o título do step é opcional (ver validate.ts).
+        // Interpola e cai num padrão quando vazio, p/ não violar a coluna.
+        title: interpolate(cfg.title ?? '', args).trim() || 'Nova oportunidade',
         value: cfg.value ?? 0,
         currency: acct?.default_currency ?? 'USD',
         status: 'open',

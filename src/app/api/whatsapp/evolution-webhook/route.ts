@@ -56,6 +56,41 @@ function supabaseAdmin() {
   )
 }
 
+// ============================================================
+// Guarda anti-flood por instância (BLINDAGEM da stack compartilhada).
+//
+// Um número de altíssimo volume (ex.: bot) pode despejar uma enxurrada de
+// eventos (status/mensagens) e saturar o app + Supabase, derrubando TODOS os
+// clientes da stack. Aqui limitamos quantos eventos de UMA instância são
+// processados por janela; o excesso é aceito (200) e DESCARTADO. Janela
+// deslizante em memória do processo — sem dependência externa. Tetos por
+// env pra ajustar sem redeploy de código.
+// ============================================================
+const FLOOD_WINDOW_MS = Number(process.env.EVOLUTION_FLOOD_WINDOW_MS) || 10_000
+const FLOOD_MAX = Number(process.env.EVOLUTION_FLOOD_MAX) || 120
+const floodState = new Map<string, { count: number; resetAt: number }>()
+
+/**
+ * True quando a instância excedeu o teto de EVENTOS na janela atual.
+ * `n` = quantos eventos este POST traz (payload.data pode ser um array), pra
+ * o teto refletir o trabalho real (round-trips ao banco por evento), não o
+ * nº de requisições — um lote grande num único POST conta como N.
+ */
+function isFlooding(instance: string, n: number): boolean {
+  const now = Date.now()
+  const s = floodState.get(instance)
+  if (!s || now >= s.resetAt) {
+    floodState.set(instance, { count: n, resetAt: now + FLOOD_WINDOW_MS })
+    return n > FLOOD_MAX
+  }
+  const before = s.count
+  s.count += n
+  if (before <= FLOOD_MAX && s.count > FLOOD_MAX) {
+    console.warn(`[evolution-webhook] FLOOD: instância ${instance} excedeu ${FLOOD_MAX}/${FLOOD_WINDOW_MS}ms — descartando excesso`)
+  }
+  return s.count > FLOOD_MAX
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
 
@@ -320,6 +355,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'instance ausente' }, { status: 400 })
   }
 
+  // BLINDAGEM: descarta o excesso de uma instância em rajada (protege a stack
+  // compartilhada de uma enxurrada que derrubaria todos os clientes). 200 pra
+  // o Evolution não reenviar. Conta EVENTOS do lote, não requisições.
+  const eventCount = Array.isArray(payload?.data) ? Math.max(payload.data.length, 1) : 1
+  if (isFlooding(instance, eventCount)) {
+    return NextResponse.json({ ok: true, throttled: true })
+  }
+
   // Resolve a config Evolution pela instância (única — migration 025).
   const { data: config, error: cfgErr } = await supabaseAdmin()
     .from('whatsapp_config')
@@ -338,21 +381,33 @@ export async function POST(request: Request) {
   // ACK de status (entregue/lido) das mensagens que enviamos por este número.
   // Atualiza messages.status + broadcast_recipients via handleStatusUpdate.
   if (ev === 'messages.update') {
-    let updated = 0
+    // Coalescing: status só avança (read>delivered>sent), e o que importa é o
+    // MAIS avançado por mensagem — colapsa N updates do mesmo id num só.
+    // Filtra `fromMe` (status é das mensagens que NÓS enviamos) p/ não gastar
+    // query com ACK de mensagens que não são nossas. Reduz drasticamente a
+    // carga de um número de alto volume.
+    const RANK: Record<string, number> = { failed: 0, pending: 1, sent: 2, delivered: 3, read: 4 }
+    const best = new Map<string, { status: string; ts: string; recipient: string }>()
     for (const data of items) {
-      if (!data?.key?.id) continue
+      if (!data?.key?.id || !data?.key?.fromMe) continue
       const raw = data?.update?.status ?? data?.status ?? data?.update?.messageStatus
       const mapped = raw != null ? EVOLUTION_STATUS_MAP[String(raw)] : undefined
       if (!mapped) continue
       const tsNum = Number(data?.messageTimestamp)
       const ts = String(Number.isFinite(tsNum) && tsNum > 0 ? tsNum : Math.floor(Date.now() / 1000))
-      try {
-        await handleStatusUpdate({
-          id: data.key.id,
+      const cur = best.get(data.key.id)
+      if (!cur || (RANK[mapped] ?? -1) > (RANK[cur.status] ?? -1)) {
+        best.set(data.key.id, {
           status: mapped,
-          timestamp: ts,
-          recipient_id: phoneFromJid(data?.key?.senderPn || data?.key?.remoteJid || ''),
+          ts,
+          recipient: phoneFromJid(data?.key?.senderPn || data?.key?.remoteJid || ''),
         })
+      }
+    }
+    let updated = 0
+    for (const [id, v] of best) {
+      try {
+        await handleStatusUpdate({ id, status: v.status, timestamp: v.ts, recipient_id: v.recipient })
         updated++
       } catch (err) {
         console.error('[evolution-webhook] status update falhou:', err)

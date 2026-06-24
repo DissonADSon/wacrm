@@ -192,20 +192,35 @@ export function ContactDetailView({
     }
 
     setSavingDetails(true);
+    // Só reenvia `phone` quando ele REALMENTE mudou. Reenviar o mesmo telefone
+    // colide com o índice único de telefone normalizado (mig 022), o Postgres
+    // rejeita o UPDATE inteiro (23505) e o NOME — que o usuário mudou — não
+    // salva. Era o bug Johari #2 ("às vezes não salva ao renomear").
+    const patch: Record<string, unknown> = {
+      name: editName.trim() || null,
+      email: editEmail.trim() || null,
+      company: editCompany.trim() || null,
+      city: editCity.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+    const newPhone = editPhone.trim();
+    if (newPhone !== (contact?.phone ?? '')) {
+      patch.phone = newPhone;
+    }
+
     const { error } = await supabase
       .from('contacts')
-      .update({
-        name: editName.trim() || null,
-        phone: editPhone.trim(),
-        email: editEmail.trim() || null,
-        company: editCompany.trim() || null,
-        city: editCity.trim() || null,
-        updated_at: new Date().toISOString(),
-      })
+      .update(patch)
       .eq('id', contactId);
 
     if (error) {
-      toast.error('Falha ao atualizar contato');
+      // 23505 = outro contato da conta já usa esse telefone.
+      const duplicate = (error as { code?: string }).code === '23505';
+      toast.error(
+        duplicate
+          ? 'Já existe um contato com esse telefone nesta conta.'
+          : 'Falha ao atualizar contato',
+      );
     } else {
       toast.success('Contato atualizado');
       fetchContact();

@@ -107,7 +107,30 @@ export async function uploadAccountMedia(
     upsert: false,
     contentType: file.type,
   });
-  if (upErr) throw new Error(upErr.message);
+  if (upErr) {
+    // Traduz os erros mais comuns do Storage para PT-BR claro, em vez de
+    // jogar a mensagem técnica/inglês no toast (assim o usuário entende o
+    // motivo real — bug Johari #4, em que "não consigo anexar" não dizia
+    // se era tipo de arquivo, tamanho ou permissão).
+    const m = (upErr.message || "").toLowerCase();
+    if (m.includes("mime") || m.includes("not supported") || m.includes("content type")) {
+      throw new Error(
+        `Tipo de arquivo não suportado (${file.type || "desconhecido"}). ` +
+          "Use PDF, JPG, PNG, WEBP, MP4, documentos Office, TXT ou áudio. " +
+          "Fotos/vídeos de iPhone (HEIC/MOV) precisam ser convertidos.",
+      );
+    }
+    if (m.includes("exceeded") || m.includes("maximum") || m.includes("too large") || m.includes("413")) {
+      throw new Error(
+        `O arquivo (${(file.size / 1024 / 1024).toFixed(1)} MB) excede o limite de envio. ` +
+          "Tente um arquivo menor ou comprima-o.",
+      );
+    }
+    if (m.includes("row-level") || m.includes("policy") || m.includes("permission")) {
+      throw new Error("Sem permissão para anexar mídia nesta conta. Fale com o administrador.");
+    }
+    throw new Error(upErr.message);
+  }
 
   const {
     data: { publicUrl },

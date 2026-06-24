@@ -103,6 +103,28 @@ existem e já há 2 números cadastrados: Johari `evohub` e demo Disson `evoluti
 
 Itens abertos, base para as próximas frentes. Marcar prioridade ao acionar.
 
+### 🐞 Bugs reportados pela Johari (24/06 — Michelle, `JOH-20260624-1432-RGR`)
+> Diagnóstico de causa-raiz com arquivo:linha. Rastreio do conserto em `_CLIENTES/Johari/manutencao.md`.
+- [ ] **#1 Inbox — várias conversas para o mesmo contato (P0, alta).** Corrida TOCTOU em
+  `findOrCreateConversation` (`api/whatsapp/webhook/route.ts:949-986`): SELECT `.single()` + INSERT
+  sem retry de unique-violation; mensagem fragmentada chega como upserts concorrentes → N conversas.
+  Sem `UNIQUE(account_id,contact_id)` em `conversations` (`migrations/001:140-154`); `.single()` quebra
+  com 2+ e auto-agrava. **Fix:** migration com merge de duplicatas + `UNIQUE(account_id,contact_id)`;
+  tornar idempotente (`.maybeSingle()` + `isUniqueViolation`, espelhar `findOrCreateContact:933-944`).
+- [ ] **#2 Contatos — rename não salva (intermitente) (P0, alta).** `contact-detail-view.tsx:195`
+  manda `name`+`phone` no mesmo UPDATE e **sempre reenvia phone**; colisão na unique
+  `idx_contacts_account_phone_normalized` (migration 022) rejeita o UPDATE inteiro (23505) e o nome
+  vai junto; catch genérico (`:207`) esconde o motivo. **Fix:** só enviar `phone` se mudou; tratar
+  `isUniqueViolation` (`lib/contacts/dedupe.ts:72`) com toast claro.
+- [ ] **#3 Automações — não ativa ("título obrigatório em Steps[2].title") (P0, alta).** A validação
+  do step `create_deal` exige `title` (`lib/automations/validate.ts:95-97`) mas o engine NÃO exige
+  (`engine.ts:499-523`) — validação mais restritiva que o runtime. **Fix:** remover a exigência de
+  `title` no case `create_deal` do `validate.ts`. (confirmar no banco se `title` está vazio).
+- [ ] **#4 Mídia — Amanda não anexa até 95MB (P1, média).** NÃO é o limite (bucket já 100MB, mig 026
+  aplicada). Provável `account_id` do perfil da Amanda ≠ conta Johari `7aa2b826-…` → RLS do storage
+  barra. **Confirmar:** `SELECT account_id, account_role FROM profiles WHERE email ILIKE '%amanda%'`
+  + msg exata do toast (RLS vs 413 vs MIME). `lib/storage/upload-media.ts`.
+
 ### ✅ Feito em 23/06 (bug em produção — Johari)
 - [x] **Automações davam 404 ao abrir/editar/ativar (bug de tenancy).** A rota
   `api/automations/[id]/route.ts` (e `/duplicate`) escopava por `user_id` em vez
