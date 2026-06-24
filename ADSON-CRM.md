@@ -146,11 +146,21 @@ Itens abertos, base para as próximas frentes. Marcar prioridade ao acionar.
 - [ ] **Validar multi-número na MESMA conta.** Hoje cada conta tem 1 número (o `.single()` nunca chegou a quebrar). Antes de vender 2º número numa conta: subir `accounts.whatsapp_numbers_limit`, adicionar 2º número pela UI, testar envio/broadcast/mídia. Código pronto, falta o teste end-to-end real.
 - [ ] **Suíte de testes defasada pela tradução PT-BR.** `vitest`: 54 falhas (de 421), todas porque assertions esperam mensagens em inglês e o código responde em PT-BR (ex: `template-validators`, `flows/validate`, `automations/validate`) + `upload-media` esperando 16 MB (mudou p/ 95 MB na 026). **Não é regressão** — é dívida da tradução. Atualizar as assertions.
 
+### ✅ Feito em 24/06 (hardening Evolution + i18n)
+- [x] **Auditoria adversarial do pipeline Evolution** (25 achados) + **Bloco 0 corrigido e deployado** no `normalizeEvolutionMessage`: allowlist de JID (barra canal/lista/grupo/status → fim do contato-lixo), @lid sem senderPn descartado, desempacota mensagens temporárias/visualização-única, timestamp robusto, reação→`message_reactions`, protocolMessage/tipos não suportados descartados, reply citado, localização, botão/lista, vCard. Validado em prod.
+- [x] **Mensagens de erro de API traduzidas p/ PT-BR** (~45 + middleware). Não era regressão — a tradução de 22/06 cobriu UI estática, não os erros das rotas.
+
 ### P1 — produto padrão para clientes
 - [ ] **White-label pré-login** por domínio/env (hoje a marca só troca pós-login).
 - [ ] **Cobrança por assento (agentes).** Hoje agentes são ilimitados no shared inbox. Implementar limite de assentos por conta.
-- [ ] **Mídia recebida via Evolution direto** (Baileys): o `evolution-webhook` já propaga `api_base`, mas Baileys não entrega mídia no formato `mediaId` da Meta — precisa de tratamento próprio quando um número Evolution receber mídia (Fase 3).
 - [ ] **Bloquear "Automações" no menu** por conta via mecanismo `beta_features` (fácil).
+
+### P1b — backlog da auditoria Evolution (Baileys) — não-urgente, mas relevante p/ número real
+- [ ] **M5 — Download de mídia inbound Evolution.** Hoje foto/áudio/PDF recebidos viram placeholder `[imagem]` não-clicável (Baileys não usa `media_id` da Meta). Implementar `getBase64FromMediaMessage` → Supabase Storage → `media_url` real.
+- [ ] **M6 — Status de envio (entregue/lido) p/ Evolution.** `messages.update` é descartado → mensagens ficam presas em "enviado"; broadcast nunca conta delivered/read. Tratar `messages.update` e mapear o enum Baileys (2/3/4) pro ladder.
+- [ ] **M10/M11 — Envio: reply citado incompleto** (falta `remoteJid`/`fromMe` no `quoted`) e **mimetype** ausente no `sendMedia` (documento sem nome/ícone).
+- [ ] **M12 — Dedupe por últimos-8 dígitos** pode fundir contatos BR distintos (DDD diferente, mesmo sufixo). Canonicalizar número BR (9 dígitos) e exigir match completo.
+- [ ] **B1 — `sendReaction` Evolution é no-op** mas grava como enviada (UI mostra reagido, cliente não vê).
 
 ### P2 — quando houver dados reais
 - [ ] **Auto-preenchimento das variáveis de template** — adiado até Johari ter conversas reais.
