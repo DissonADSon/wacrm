@@ -50,7 +50,12 @@ function phoneFromJid(jid: string): string {
 function normalizeEvolutionMessage(data: Json): WhatsAppMessage | null {
   const key = data?.key ?? {}
   const m = data?.message ?? {}
-  const from = phoneFromJid(key.remoteJid || '')
+  // O WhatsApp mascara o remetente como `@lid` (LID) em vários casos de
+  // privacidade — aí `remoteJid` é um identificador interno, NÃO o telefone.
+  // O número real vem em `senderPn` (sender phone number). Preferir senderPn;
+  // só cair pro remoteJid quando não houver. Sem isso, o contato é criado com
+  // o LID no lugar do número e a RESPOSTA falha ("number exists:false").
+  const from = phoneFromJid(key.senderPn || key.remoteJid || '')
   if (!from) return null
 
   const base = {
