@@ -925,8 +925,19 @@ async function findOrCreateContact(
   )
 
   if (existingContact) {
-    // Update name if it changed
-    if (name && name !== existingContact.name) {
+    // O pushName do WhatsApp só PREENCHE o nome enquanto ele ainda é um
+    // placeholder (vazio ou igual ao próprio telefone). Assim que houver um
+    // nome "de verdade" — seja o pushName capturado na criação, seja um nome
+    // digitado/renomeado no CRM — NÃO sobrescrevemos mais. Antes, toda
+    // mensagem recebida regravava o nome com o pushName do remetente,
+    // revertendo as renomeações feitas no CRM (bug Johari #2: "não consigo
+    // editar os nomes" — salvava e voltava sozinho a cada nova mensagem).
+    const stored = (existingContact.name ?? '').trim()
+    const isPlaceholder =
+      stored === '' ||
+      stored === existingContact.phone ||
+      stored === phone
+    if (name && isPlaceholder && name !== existingContact.name) {
       await supabaseAdmin()
         .from('contacts')
         .update({ name, updated_at: new Date().toISOString() })
