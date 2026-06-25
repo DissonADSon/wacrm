@@ -9,6 +9,22 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [1.0.1] — 2026-06-25 — Correções: nome do contato + mídia recebida
+
+Correções a partir dos relatos da Johari (Michelle, 25/06):
+
+- **Nome do contato deixa de "voltar sozinho".** O webhook regravava
+  `contacts.name` com o nome de perfil (pushName) do remetente a cada
+  mensagem recebida, revertendo as renomeações feitas no CRM. Agora o
+  pushName só **preenche** quando o nome ainda é um placeholder (vazio ou
+  igual ao telefone); um nome definido por quem usa o CRM nunca é
+  sobrescrito. Vale para os dois canais (Cloud API/EvoHub e Evolution).
+- **Mídia recebida (regressão do envio 1.0.0).** Imagens recebidas via
+  EvoHub passaram a ser gravadas com a URL temporária `lookaside.fbsbx.com`
+  da Meta (expira → não abre). Voltam a usar o proxy interno
+  `/api/whatsapp/media/<id>`. **Migração:** `031_repair_lookaside_media_urls.sql`
+  repara os registros já gravados (idempotente).
+
 ## [1.0.0] — 2026-06-23 — Marco do produto ADSon CRM
 
 > **Em português** porque a partir desta versão o fork passa a ser o produto
