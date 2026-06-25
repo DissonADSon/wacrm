@@ -775,6 +775,16 @@ async function parseMessageContent(
     interactiveReplyId: null,
   }
 
+  // Só confiamos numa URL de mídia PRÉ-RESOLVIDA quando ela aponta para o NOSSO
+  // storage (caminho do Evolution, que baixa e sobe a mídia no recebimento).
+  // O EvoHub injeta no payload Cloud API uma URL `lookaside.fbsbx.com` da Meta
+  // que EXPIRA e exige Bearer (401 no front → bolha vazia). Essa NÃO pode ser
+  // usada direto: cai no proxy /api/whatsapp/media/<id>, que rebusca a URL
+  // fresca e autenticada sob demanda. (Sem este guard, o M5 quebrava a mídia
+  // recebida do Johari/EvoHub.)
+  const ownStorageUrl = (u?: string): boolean =>
+    !!u && u.includes('/storage/v1/object/public/')
+
   switch (message.type) {
     case 'text':
       return { ...empty, contentText: message.text?.body || null }
@@ -784,7 +794,9 @@ async function parseMessageContent(
         return {
           ...empty,
           contentText: message.image.caption || null,
-          mediaUrl: message.image.url || (await verifyAndBuildUrl(message.image.id)),
+          mediaUrl: ownStorageUrl(message.image.url)
+            ? message.image.url!
+            : await verifyAndBuildUrl(message.image.id),
           mediaType: message.image.mime_type,
         }
       }
@@ -795,7 +807,9 @@ async function parseMessageContent(
         return {
           ...empty,
           contentText: message.video.caption || null,
-          mediaUrl: message.video.url || (await verifyAndBuildUrl(message.video.id)),
+          mediaUrl: ownStorageUrl(message.video.url)
+            ? message.video.url!
+            : await verifyAndBuildUrl(message.video.id),
           mediaType: message.video.mime_type,
         }
       }
@@ -807,7 +821,9 @@ async function parseMessageContent(
           ...empty,
           contentText:
             message.document.caption || message.document.filename || null,
-          mediaUrl: message.document.url || (await verifyAndBuildUrl(message.document.id)),
+          mediaUrl: ownStorageUrl(message.document.url)
+            ? message.document.url!
+            : await verifyAndBuildUrl(message.document.id),
           mediaType: message.document.mime_type,
         }
       }
@@ -817,7 +833,9 @@ async function parseMessageContent(
       if (message.audio?.id) {
         return {
           ...empty,
-          mediaUrl: message.audio.url || (await verifyAndBuildUrl(message.audio.id)),
+          mediaUrl: ownStorageUrl(message.audio.url)
+            ? message.audio.url!
+            : await verifyAndBuildUrl(message.audio.id),
           mediaType: message.audio.mime_type,
         }
       }
@@ -830,7 +848,9 @@ async function parseMessageContent(
       if (message.sticker?.id) {
         return {
           ...empty,
-          mediaUrl: message.sticker.url || (await verifyAndBuildUrl(message.sticker.id)),
+          mediaUrl: ownStorageUrl(message.sticker.url)
+            ? message.sticker.url!
+            : await verifyAndBuildUrl(message.sticker.id),
           mediaType: message.sticker.mime_type,
         }
       }
