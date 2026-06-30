@@ -11,6 +11,7 @@ import type {
   Deal,
   DealCustomField,
   DealStatus,
+  Pipeline,
   PipelineStage,
   Profile,
 } from "@/types";
@@ -40,6 +41,8 @@ interface DealFormProps {
   deal?: Deal | null;
   pipelineId: string;
   stages: PipelineStage[];
+  /** Todos os funis da conta — habilita mover a oportunidade entre funis. */
+  pipelines: Pipeline[];
   defaultStageId?: string;
   onSaved: () => void;
 }
@@ -50,6 +53,7 @@ export function DealForm({
   deal,
   pipelineId,
   stages,
+  pipelines,
   defaultStageId,
   onSaved,
 }: DealFormProps) {
@@ -61,6 +65,14 @@ export function DealForm({
   const [currency, setCurrency] = useState(defaultCurrency);
   const [contactId, setContactId] = useState("");
   const [stageId, setStageId] = useState("");
+  // Funil escolhido (pode diferir do funil atual da página → mover entre funis).
+  const [pipelineIdSel, setPipelineIdSel] = useState(pipelineId);
+  // Etapas do funil escolhido. Reaproveita `stages` para o funil atual;
+  // busca as etapas do destino quando o usuário troca de funil.
+  const [stageOptions, setStageOptions] = useState<PipelineStage[]>(stages);
+  // Verdadeiro enquanto busca as etapas de outro funil — trava o salvar para
+  // não gravar etapa de um funil com pipeline_id de outro (card órfão).
+  const [stagesLoading, setStagesLoading] = useState(false);
   const [assignedTo, setAssignedTo] = useState("");
   const [expectedCloseDate, setExpectedCloseDate] = useState("");
   const [notes, setNotes] = useState("");
@@ -94,6 +106,7 @@ export function DealForm({
       // (migration 004: ON DELETE SET NULL). "" means "no selection".
       setContactId(deal.contact_id ?? "");
       setStageId(deal.stage_id);
+      setPipelineIdSel(deal.pipeline_id);
       setAssignedTo(deal.assigned_to ?? "");
       setExpectedCloseDate(deal.expected_close_date ?? "");
       setNotes(deal.notes ?? "");
@@ -103,12 +116,51 @@ export function DealForm({
       setCurrency(defaultCurrency);
       setContactId("");
       setStageId(defaultStageId || stages[0]?.id || "");
+      setPipelineIdSel(pipelineId);
       setAssignedTo("");
       setExpectedCloseDate("");
       setNotes("");
     }
-  }, [open, deal, defaultStageId, stages, defaultCurrency]);
+  }, [open, deal, defaultStageId, stages, pipelineId, defaultCurrency]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Carrega as etapas do funil escolhido. Para o funil atual, reaproveita as
+  // etapas já carregadas pela página. Ao trocar para outro funil, busca as
+  // etapas do destino e reseta a etapa para a 1ª — CRÍTICO: como não há FK
+  // amarrando stage_id ao pipeline_id, gravar pipeline novo com etapa antiga
+  // deixaria o card órfão (sumiria do board).
+  useEffect(() => {
+    if (!open || !pipelineIdSel) return;
+    if (pipelineIdSel === pipelineId) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setStageOptions(stages);
+      // Revalida a etapa: se a etapa atual não pertence a este funil (caso de
+      // trocar de funil e voltar), reseta para a 1ª. Preserva deal.stage_id na
+      // abertura, pois ele pertence ao funil atual.
+      setStageId((cur) => (stages.some((s) => s.id === cur) ? cur : stages[0]?.id ?? ""));
+      setStagesLoading(false);
+      /* eslint-enable react-hooks/set-state-in-effect */
+      return;
+    }
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStagesLoading(true);
+    (async () => {
+      const { data } = await supabase
+        .from("pipeline_stages")
+        .select("*")
+        .eq("pipeline_id", pipelineIdSel)
+        .order("position");
+      if (cancelled) return;
+      const opts = (data ?? []) as PipelineStage[];
+      setStageOptions(opts);
+      setStageId(opts[0]?.id ?? "");
+      setStagesLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, pipelineIdSel, pipelineId, stages, supabase]);
 
   // Load supporting data once the sheet is open
   useEffect(() => {
@@ -215,6 +267,12 @@ export function DealForm({
       toast.error("Título, contato e etapa são obrigatórios");
       return;
     }
+    // Anti-órfão: nunca gravar uma etapa que não pertence ao funil escolhido
+    // (vale também enquanto as etapas do novo funil ainda carregam).
+    if (stagesLoading || !stageOptions.some((s) => s.id === stageId)) {
+      toast.error("Aguarde carregar as etapas e selecione uma etapa válida do funil");
+      return;
+    }
     setSaving(true);
 
     const payload = {
@@ -222,7 +280,7 @@ export function DealForm({
       value: parseFloat(value) || 0,
       currency,
       contact_id: contactId,
-      pipeline_id: pipelineId,
+      pipeline_id: pipelineIdSel,
       stage_id: stageId,
       assigned_to: assignedTo || null,
       notes: notes.trim() || null,
@@ -400,6 +458,28 @@ export function DealForm({
               />
             </div>
 
+            {pipelines.length > 1 && (
+              <div className="grid gap-2">
+                <Label className="text-muted-foreground">Funil</Label>
+                <select
+                  value={pipelineIdSel}
+                  onChange={(e) => setPipelineIdSel(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
+                >
+                  {pipelines.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                {deal && pipelineIdSel !== deal.pipeline_id && (
+                  <p className="text-xs text-amber-400">
+                    A oportunidade será movida para este funil, na 1ª etapa.
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="grid gap-2">
               <Label className="text-muted-foreground">Etapa</Label>
               <select
@@ -407,7 +487,7 @@ export function DealForm({
                 onChange={(e) => setStageId(e.target.value)}
                 className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
               >
-                {stages.map((s) => (
+                {stageOptions.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
@@ -530,7 +610,7 @@ export function DealForm({
               </Button>
               <Button
                 onClick={handleSave}
-                disabled={saving || !title.trim() || !contactId || !stageId}
+                disabled={saving || stagesLoading || !title.trim() || !contactId || !stageId}
                 className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {saving ? "Salvando..." : deal ? "Salvar alterações" : "Criar oportunidade"}

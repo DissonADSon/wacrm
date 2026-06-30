@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -39,6 +39,19 @@ export function PipelineBoard({
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
 
+  // Barra de rolagem horizontal duplicada NO TOPO do board (pedido Johari):
+  // uma faixa-fantasma com a largura total do conteúdo, sincronizada com o
+  // scroll real. Só no desktop — no mobile o snap/peek já indica o overflow.
+  const boardRef = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  const [scrollWidth, setScrollWidth] = useState(0);
+
+  // Espelha o scroll entre a faixa do topo e o board. Como ambos recebem o
+  // mesmo valor, converge num passo (sem loop infinito).
+  const syncScroll = (from: HTMLDivElement | null, to: HTMLDivElement | null) => {
+    if (from && to && to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft;
+  };
+
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
     [stages],
@@ -52,6 +65,12 @@ export function PipelineBoard({
       if (bucket) bucket.push(deal);
     }
     return map;
+  }, [sortedStages, deals]);
+
+  // Mede a largura total rolável do board sempre que o conteúdo muda, para
+  // dimensionar a faixa-fantasma do topo.
+  useEffect(() => {
+    if (boardRef.current) setScrollWidth(boardRef.current.scrollWidth);
   }, [sortedStages, deals]);
 
   const sensors = useSensors(
@@ -102,7 +121,27 @@ export function PipelineBoard({
           natural layout. The board can still overflow horizontally on
           lg+ once a pipeline has many stages (columns keep a 260px
           min-width), so a thin scrollbar stays visible on desktop. */}
-      <div className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none">
+      {/* Faixa de rolagem no TOPO (só desktop): espelha o scroll do board. */}
+      <div
+        ref={topRef}
+        onScroll={() => syncScroll(topRef.current, boardRef.current)}
+        aria-hidden
+        // scrollBehavior:auto (instantâneo) é obrigatório aqui: com o `smooth`
+        // herdado de .pipeline-scroll, o setter de scrollLeft animaria e
+        // dispararia onScroll intermediários, fazendo os dois containers se
+        // perseguirem (jitter, não alcança as colunas finais).
+        style={{ scrollBehavior: "auto" }}
+        className="pipeline-scroll pipeline-scroll-top mb-2 hidden overflow-x-auto lg:block"
+      >
+        <div style={{ width: scrollWidth || 1, height: 1 }} />
+      </div>
+
+      <div
+        ref={boardRef}
+        onScroll={() => syncScroll(boardRef.current, topRef.current)}
+        style={{ scrollBehavior: "auto" }}
+        className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none"
+      >
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
           const totalValue = stageDeals.reduce(

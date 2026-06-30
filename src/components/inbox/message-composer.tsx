@@ -28,8 +28,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCan } from "@/hooks/use-can";
+import { useAuth } from "@/hooks/use-auth";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import type { QuickReply } from "@/types";
 import {
   uploadAccountMedia,
   deleteAccountMedia,
@@ -124,6 +127,27 @@ export function MessageComposer({
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Mensagens rápidas (respostas prontas, migration 032). Carregadas uma vez
+  // por conta; o menu abre quando a mensagem começa com "/".
+  const { accountId } = useAuth();
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
+  const [quickDismissed, setQuickDismissed] = useState(false);
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await createClient()
+        .from("quick_replies")
+        .select("*")
+        .eq("account_id", accountId)
+        .order("title", { ascending: true });
+      if (!cancelled) setQuickReplies((data ?? []) as QuickReply[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
   // Media attachment state. `draft` holds an uploaded-but-not-yet-sent
   // attachment; `busy` covers the upload/transcode window.
   const [draft, setDraft] = useState<MediaDraft | null>(null);
@@ -217,8 +241,24 @@ export function MessageComposer({
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setText(e.target.value);
+      const v = e.target.value;
+      setText(v);
+      // Reabre o menu numa próxima "/": só fica dispensado enquanto o texto
+      // ainda começa com "/".
+      if (!v.startsWith("/")) setQuickDismissed(false);
       adjustHeight();
+    },
+    [adjustHeight]
+  );
+
+  const applyQuickReply = useCallback(
+    (qr: QuickReply) => {
+      setText(qr.body);
+      setQuickDismissed(true);
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        adjustHeight();
+      });
     },
     [adjustHeight]
   );
@@ -398,10 +438,58 @@ export function MessageComposer({
     setDraft((d) => (d ? { ...d, caption } : d));
   }, []);
 
+  // Menu de mensagens rápidas: abre quando o texto começa com "/" e há
+  // respostas que casam. O que vem depois de "/" filtra por título/corpo.
+  const slashActive =
+    !readOnly && !sessionExpired && text.startsWith("/") && !quickDismissed;
+  const quickQuery = slashActive ? text.slice(1).toLowerCase() : "";
+  const quickMatches = slashActive
+    ? quickReplies.filter(
+        (q) =>
+          q.title.toLowerCase().includes(quickQuery) ||
+          q.body.toLowerCase().includes(quickQuery),
+      )
+    : [];
+  const showQuick = slashActive && quickMatches.length > 0;
+
+  const onComposerKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showQuick && e.key === "Escape") {
+      e.preventDefault();
+      setQuickDismissed(true);
+      return;
+    }
+    if (showQuick && e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      applyQuickReply(quickMatches[0]);
+      return;
+    }
+    handleKeyDown(e);
+  };
+
   // ---- Render --------------------------------------------------------
 
   return (
-    <div className="border-t border-border bg-card p-3">
+    <div className="relative border-t border-border bg-card p-3">
+      {showQuick && (
+        <div className="absolute bottom-full left-3 right-3 z-20 mb-1 max-h-64 overflow-y-auto rounded-xl border border-border bg-popover p-1 shadow-lg">
+          <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+            Mensagens rápidas
+          </p>
+          {quickMatches.map((qr) => (
+            <button
+              key={qr.id}
+              type="button"
+              onClick={() => applyQuickReply(qr)}
+              className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-muted"
+            >
+              <span className="text-sm font-medium text-foreground">{qr.title}</span>
+              <span className="line-clamp-1 w-full text-xs text-muted-foreground">
+                {qr.body}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
       {replyTo && (
         <div className="mb-2">
           <ReplyQuote
@@ -550,7 +638,7 @@ export function MessageComposer({
             ref={textareaRef}
             value={text}
             onChange={handleChange}
-            onKeyDown={handleKeyDown}
+            onKeyDown={onComposerKeyDown}
             onPaste={handlePaste}
             placeholder={
               readOnly

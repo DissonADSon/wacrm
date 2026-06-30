@@ -117,6 +117,18 @@ export interface ContactTag {
   tag_id: string;
 }
 
+/** Mensagem rápida (resposta pronta) — atalho de texto livre compartilhado
+ *  pela conta, inserido no chat via "/". Migration 032. */
+export interface QuickReply {
+  id: string;
+  account_id: string;
+  created_by: string | null;
+  title: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CustomField {
   id: string;
   user_id: string;
@@ -395,6 +407,7 @@ export type AutomationTriggerType =
   | 'new_contact_created'
   | 'conversation_assigned'
   | 'tag_added'
+  | 'deal_stage_changed'
   | 'time_based';
 
 export type AutomationStepType =
@@ -422,6 +435,13 @@ export interface TagTriggerConfig {
   tag_id: string;
 }
 
+export interface DealStageChangedTriggerConfig {
+  /** Funil-alvo. Vazio = qualquer funil. */
+  pipeline_id?: string;
+  /** Etapa-alvo que dispara. Vazio = qualquer etapa. */
+  stage_id?: string;
+}
+
 export interface TimeBasedTriggerConfig {
   /** Cron expression or simple HH:mm string; engine can accept either. */
   schedule: string;
@@ -432,6 +452,7 @@ export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
+  | DealStageChangedTriggerConfig
   | TimeBasedTriggerConfig
   | Record<string, unknown>;
 

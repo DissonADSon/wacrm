@@ -12,6 +12,7 @@ import { SecurityPanel } from '@/components/settings/security-panel';
 import { AppearancePanel } from '@/components/settings/appearance-panel';
 import { WhatsAppConfig } from '@/components/settings/whatsapp-config';
 import { TemplateManager } from '@/components/settings/template-manager';
+import { QuickRepliesPanel } from '@/components/settings/quick-replies-panel';
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
 import { DealsSettings } from '@/components/settings/deals-settings';
 import { MembersTab } from '@/components/settings/members-tab';
@@ -56,6 +57,7 @@ export default function SettingsPage() {
     appearance: <AppearancePanel />,
     whatsapp: <WhatsAppConfig />,
     templates: <TemplateManager />,
+    'quick-replies': <QuickRepliesPanel />,
     fields: <FieldsAndTagsPanel />,
     deals: <DealsSettings />,
     members: <MembersTab />,

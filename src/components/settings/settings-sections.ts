@@ -8,6 +8,7 @@ import {
   Tags,
   User,
   UsersRound,
+  Zap,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -26,6 +27,7 @@ export const SETTINGS_SECTIONS = [
   'appearance',
   'whatsapp',
   'templates',
+  'quick-replies',
   'fields',
   'deals',
   'members',
@@ -50,6 +52,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   appearance: { id: 'appearance', label: 'Aparência', icon: Palette, group: 'account' },
   whatsapp: { id: 'whatsapp', label: 'WhatsApp', icon: PlugZap, group: 'workspace' },
   templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },
+  'quick-replies': { id: 'quick-replies', label: 'Mensagens rápidas', icon: Zap, group: 'workspace' },
   fields: { id: 'fields', label: 'Campos e tags', icon: Tags, group: 'workspace' },
   deals: { id: 'deals', label: 'Oportunidades e moeda', icon: Coins, group: 'workspace' },
   members: { id: 'members', label: 'Membros da equipe', icon: UsersRound, group: 'workspace' },

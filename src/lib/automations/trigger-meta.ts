@@ -31,6 +31,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Tag Adicionada',
     pillClass: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
   },
+  deal_stage_changed: {
+    label: 'Mudança de Etapa no Funil',
+    pillClass: 'border-orange-500/30 bg-orange-500/10 text-orange-300',
+  },
   time_based: {
     label: 'Baseado em Tempo',
     pillClass: 'border-slate-500/30 bg-slate-500/10 text-muted-foreground',

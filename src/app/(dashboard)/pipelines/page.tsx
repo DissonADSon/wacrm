@@ -214,6 +214,7 @@ export default function PipelinesPage() {
 
   const handleDealMoved = useCallback(
     async (dealId: string, newStageId: string) => {
+      const moved = deals.find((d) => d.id === dealId);
       // Optimistic update — board already animated; just persist.
       setDeals((prev) =>
         prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId } : d)),
@@ -225,9 +226,25 @@ export default function PipelinesPage() {
       if (error) {
         toast.error("Falha ao mover a oportunidade");
         refreshDeals();
+        return;
+      }
+      // Dispara automações com gatilho "card mudou de etapa" (fire-and-forget,
+      // só após confirmar o update para não disparar em mudança revertida).
+      // ponytail: cobre o drag-and-drop (caso relatado); mudança via form de
+      // edição não dispara — fonte única seria um trigger no Postgres.
+      if (moved?.contact_id) {
+        fetch("/api/automations/engine", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trigger_type: "deal_stage_changed",
+            contact_id: moved.contact_id,
+            context: { stage_id: newStageId, pipeline_id: selectedPipelineId },
+          }),
+        }).catch(() => {});
       }
     },
-    [supabase, refreshDeals],
+    [supabase, refreshDeals, deals, selectedPipelineId],
   );
 
   const handleAddDeal = useCallback(
@@ -484,6 +501,7 @@ export default function PipelinesPage() {
         deal={editingDeal}
         pipelineId={selectedPipelineId}
         stages={stages}
+        pipelines={pipelines}
         defaultStageId={defaultStageId}
         onSaved={refreshDeals}
       />

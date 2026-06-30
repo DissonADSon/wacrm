@@ -64,6 +64,7 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [selectedTagId, setSelectedTagId] = useState<string>('');
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -108,12 +109,29 @@ export default function ContactsPage() {
     let query = supabase
       .from('contacts')
       .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
+      .order('name', { ascending: true, nullsFirst: false })
       .range(from, to);
 
     if (search.trim()) {
       const term = `%${search.trim()}%`;
       query = query.or(`name.ilike.${term},phone.ilike.${term},email.ilike.${term}`);
+    }
+
+    if (selectedTagId) {
+      const { data: tagged } = await supabase
+        .from('contact_tags')
+        .select('contact_id')
+        .eq('tag_id', selectedTagId);
+      const ids = (tagged ?? []).map((r) => r.contact_id);
+      if (ids.length === 0) {
+        setContacts([]);
+        setTotalCount(0);
+        setLoading(false);
+        return;
+      }
+      // ponytail: filtra via lista de ids (server-side com .in). OK até
+      // alguns milhares de contatos por tag; acima disso, virar join/RPC.
+      query = query.in('id', ids);
     }
 
     const { data, count, error } = await query;
@@ -154,7 +172,7 @@ export default function ContactsPage() {
 
     setContacts(enriched);
     setLoading(false);
-  }, [supabase, page, search, tagsMap]);
+  }, [supabase, page, search, selectedTagId, tagsMap]);
 
   // Load-once-on-mount-ish data fetches. Each setter inside runs
   // inside an async promise completion (Supabase await), not
@@ -308,20 +326,62 @@ export default function ContactsPage() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            // Reset pagination when the query changes — the result
-            // set shrinks/grows, page N may no longer be valid.
-            setPage(0);
-          }}
-          placeholder="Buscar por nome, telefone ou e-mail..."
-          className="pl-8 bg-card border-border text-foreground placeholder:text-muted-foreground"
-        />
+      {/* Search + filtro por tag */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              // Reset pagination when the query changes — the result
+              // set shrinks/grows, page N may no longer be valid.
+              setPage(0);
+            }}
+            placeholder="Buscar por nome, telefone ou e-mail..."
+            className="pl-8 bg-card border-border text-foreground placeholder:text-muted-foreground"
+          />
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-muted">
+            <SlidersHorizontal className="size-4 text-muted-foreground" />
+            {selectedTagId && tagsMap[selectedTagId]
+              ? tagsMap[selectedTagId].name
+              : 'Todas as tags'}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="max-h-72 w-56 overflow-y-auto border-border bg-popover">
+            <DropdownMenuItem
+              onClick={() => {
+                setSelectedTagId('');
+                setPage(0);
+              }}
+              className={!selectedTagId ? 'text-primary' : ''}
+            >
+              Todas as tags
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-border" />
+            {Object.values(tagsMap).length === 0 && (
+              <DropdownMenuItem disabled className="text-muted-foreground">
+                Nenhuma tag criada
+              </DropdownMenuItem>
+            )}
+            {Object.values(tagsMap)
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((t) => (
+                <DropdownMenuItem
+                  key={t.id}
+                  onClick={() => {
+                    setSelectedTagId(t.id);
+                    setPage(0);
+                  }}
+                  className={selectedTagId === t.id ? 'text-primary' : ''}
+                >
+                  <span className="mr-2 size-2 rounded-full" style={{ backgroundColor: t.color }} />
+                  {t.name}
+                </DropdownMenuItem>
+              ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Bulk action bar */}

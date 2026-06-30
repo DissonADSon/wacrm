@@ -5,6 +5,7 @@ import type {
   AutomationTriggerType,
   ConditionStepConfig,
   KeywordMatchTriggerConfig,
+  DealStageChangedTriggerConfig,
   SendMessageStepConfig,
   SendTemplateStepConfig,
   SendWebhookStepConfig,
@@ -32,6 +33,10 @@ export interface AutomationContext {
   tag_id?: string
   /** Agent the conversation was assigned to, for conversation_assigned. */
   agent_id?: string
+  /** Stage the deal moved into, for deal_stage_changed trigger. */
+  stage_id?: string
+  /** Pipeline the deal belongs to, for deal_stage_changed trigger. */
+  pipeline_id?: string
 }
 
 export interface DispatchInput {
@@ -581,6 +586,13 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
 }
 
 function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
+  if (automation.trigger_type === 'deal_stage_changed') {
+    const cfg = automation.trigger_config as DealStageChangedTriggerConfig
+    // Vazio = qualquer funil/etapa. Configurado = só dispara no alvo.
+    if (cfg?.pipeline_id && ctx?.pipeline_id && cfg.pipeline_id !== ctx.pipeline_id) return false
+    if (cfg?.stage_id && ctx?.stage_id !== cfg.stage_id) return false
+    return true
+  }
   if (automation.trigger_type !== 'keyword_match') return true
   const cfg = automation.trigger_config as KeywordMatchTriggerConfig
   if (!cfg?.keywords || cfg.keywords.length === 0) return false

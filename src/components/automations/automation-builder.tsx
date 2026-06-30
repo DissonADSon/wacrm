@@ -128,6 +128,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType; label: string; hint: stri
   { value: "new_contact_created", label: "Novo contato criado", hint: "Quando um contato é criado automaticamente a partir de uma mensagem recebida" },
   { value: "conversation_assigned", label: "Conversa atribuída", hint: "Quando atribuída a um agente" },
   { value: "tag_added", label: "Tag adicionada", hint: "Quando uma tag é adicionada a um contato" },
+  { value: "deal_stage_changed", label: "Mudança de etapa no funil", hint: "Quando um card é movido para uma etapa do funil (arrastar e soltar)" },
   { value: "time_based", label: "Baseado em horário", hint: "Em uma agenda recorrente" },
 ]
 
@@ -787,6 +788,31 @@ function TriggerCard({
                 />
               </div>
             )}
+            {type === "deal_stage_changed" && (
+              <div className="space-y-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    Funil
+                  </label>
+                  <PipelineSelect
+                    value={(config.pipeline_id as string) ?? ""}
+                    onChange={(v) =>
+                      onConfigChange({ ...config, pipeline_id: v, stage_id: "" })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    Etapa (vazio = qualquer etapa do funil)
+                  </label>
+                  <StageSelect
+                    pipelineId={(config.pipeline_id as string) ?? ""}
+                    value={(config.stage_id as string) ?? ""}
+                    onChange={(v) => onConfigChange({ ...config, stage_id: v })}
+                  />
+                </div>
+              </div>
+            )}
             {type === "time_based" && (
               <Input
                 placeholder="Expressão cron ou HH:mm"
@@ -933,12 +959,18 @@ function StepRenderer({
   parentScope: ParentScope
   parentPath: StepPath
 } & Omit<StepListProps, "steps" | "parentPath">) {
-  const path: StepPath = [
-    ...parentPath,
+  // For branch children, parentPath already ends in a branch marker (the
+  // placeholder appended by ConditionBranches). We must REPLACE that tail
+  // with the real child index, not append a second branch marker — appending
+  // produced a duplicated branch segment so the tree walkers descended one
+  // level too far and silently dropped edits/moves/deletes inside a branch.
+  const path: StepPath =
     parentScope.kind === "root"
-      ? { kind: "root", index }
-      : { kind: "branch", parentCid: parentScope.parentCid, branch: parentScope.branch, index },
-  ]
+      ? [...parentPath, { kind: "root", index }]
+      : [
+          ...parentPath.slice(0, -1),
+          { kind: "branch", parentCid: parentScope.parentCid, branch: parentScope.branch, index },
+        ]
   const meta = STEP_META[step.step_type]
   const Icon = meta.icon
   const expanded = props.expandedId === step.cid
@@ -1046,9 +1078,10 @@ function ConditionBranches({
 } & Omit<StepListProps, "steps" | "parentPath">) {
   const yes = step.branches?.yes ?? []
   const no = step.branches?.no ?? []
-  // Build the child scope by appending a branch marker. The scope the
-  // StepList uses is driven by the LAST element of parentPath, so the
-  // tail's `index` doesn't matter — it's replaced per child during walks.
+  // Append a placeholder branch marker. StepList reads the LAST element of
+  // parentPath only to derive the child scope (kind/parentCid/branch); the
+  // placeholder `index` is irrelevant because StepRenderer replaces this tail
+  // with each child's real index (see the path build there).
   const yesPath: StepPath = [
     ...parentPath,
     { kind: "branch", parentCid: step.cid, branch: "yes", index: 0 },

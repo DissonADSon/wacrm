@@ -45,6 +45,19 @@ const STATUS_LABELS: Record<ConversationStatus, string> = {
 
 type InboxFilter = ConversationStatus | "all" | "unread";
 
+type TagLite = { id: string; name: string; color: string };
+
+/** Extrai as tags do contato vindas do join contact_tags(tag:tags(...)).
+ *  O tipo Conversation.contact não declara o join, então lemos de forma
+ *  defensiva sem alargar o tipo global. */
+function tagsOf(conv: Conversation): TagLite[] {
+  const ct = (conv.contact as unknown as
+    | { contact_tags?: { tag: TagLite | null }[] }
+    | null
+    | undefined)?.contact_tags;
+  return (ct ?? []).map((r) => r.tag).filter((t): t is TagLite => !!t);
+}
+
 const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
   { label: "Todas", value: "all" },
   { label: "Não lidas", value: "unread" },
@@ -62,6 +75,7 @@ export function ConversationList({
 }: ConversationListProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
+  const [tagFilter, setTagFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   // Keep the latest callback in a ref so the fetch effect below can
@@ -88,7 +102,7 @@ export function ConversationList({
     (async () => {
       const { data, error } = await supabase
         .from("conversations")
-        .select("*, contact:contacts(*)")
+        .select("*, contact:contacts(*, contact_tags(tag:tags(id,name,color)))")
         .order("last_message_at", { ascending: false });
 
       if (cancelled) return;
@@ -117,6 +131,13 @@ export function ConversationList({
     // up on any events sent while the WS was disconnected or throttled.
   }, [resyncToken]);
 
+  // Tags presentes nas conversas carregadas — popula o filtro sem fetch extra.
+  const allTags = useMemo(() => {
+    const map = new Map<string, TagLite>();
+    conversations.forEach((c) => tagsOf(c).forEach((t) => map.set(t.id, t)));
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [conversations]);
+
   const filtered = useMemo(() => {
     let result = conversations;
 
@@ -124,6 +145,10 @@ export function ConversationList({
       result = result.filter((c) => c.unread_count > 0);
     } else if (filter !== "all") {
       result = result.filter((c) => c.status === filter);
+    }
+
+    if (tagFilter) {
+      result = result.filter((c) => tagsOf(c).some((t) => t.id === tagFilter));
     }
 
     if (search.trim()) {
@@ -137,7 +162,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search]);
+  }, [conversations, filter, tagFilter, search]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,31 +197,73 @@ export function ConversationList({
           />
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted">
-              {activeFilter?.label ?? "Todas"}
+        <div className="flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted">
+                {activeFilter?.label ?? "Todas"}
+                <ChevronDown className="h-3 w-3" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="border-border bg-popover"
+            >
+              {FILTER_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.value}
+                  onClick={() => setFilter(opt.value)}
+                  className={cn(
+                    "text-sm",
+                    filter === opt.value
+                      ? "text-primary"
+                      : "text-popover-foreground"
+                  )}
+                >
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted">
+              {tagFilter && allTags.find((t) => t.id === tagFilter) ? (
+                <>
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: allTags.find((t) => t.id === tagFilter)!.color }}
+                  />
+                  {allTags.find((t) => t.id === tagFilter)!.name}
+                </>
+              ) : (
+                "Tags"
+              )}
               <ChevronDown className="h-3 w-3" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            className="border-border bg-popover"
-          >
-            {FILTER_OPTIONS.map((opt) => (
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto border-border bg-popover">
               <DropdownMenuItem
-                key={opt.value}
-                onClick={() => setFilter(opt.value)}
-                className={cn(
-                  "text-sm",
-                  filter === opt.value
-                    ? "text-primary"
-                    : "text-popover-foreground"
-                )}
+                onClick={() => setTagFilter("")}
+                className={cn("text-sm", !tagFilter ? "text-primary" : "text-popover-foreground")}
               >
-                {opt.label}
+                Todas as tags
               </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {allTags.length === 0 && (
+                <DropdownMenuItem disabled className="text-sm text-muted-foreground">
+                  Nenhuma tag nas conversas
+                </DropdownMenuItem>
+              )}
+              {allTags.map((t) => (
+                <DropdownMenuItem
+                  key={t.id}
+                  onClick={() => setTagFilter(t.id)}
+                  className={cn("text-sm", tagFilter === t.id ? "text-primary" : "text-popover-foreground")}
+                >
+                  <span className="mr-2 size-2 rounded-full" style={{ backgroundColor: t.color }} />
+                  {t.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Conversation Items.
@@ -245,6 +312,7 @@ function ConversationItem({
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || "Desconhecido";
   const initials = displayName.charAt(0).toUpperCase();
+  const tags = tagsOf(conversation);
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
@@ -305,6 +373,26 @@ function ConversationItem({
             />
           </div>
         </div>
+
+        {/* Tags do contato — replica a triagem visual do WhatsApp na lista. */}
+        {tags.length > 0 && (
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {tags.slice(0, 3).map((t) => (
+              <span
+                key={t.id}
+                className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+                style={{ backgroundColor: `${t.color}20`, color: t.color }}
+                title={t.name}
+              >
+                <span className="size-1.5 rounded-full" style={{ backgroundColor: t.color }} />
+                {t.name}
+              </span>
+            ))}
+            {tags.length > 3 && (
+              <span className="text-[9px] text-muted-foreground">+{tags.length - 3}</span>
+            )}
+          </div>
+        )}
       </div>
     </button>
   );

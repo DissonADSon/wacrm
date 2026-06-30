@@ -9,6 +9,35 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [1.1.0] — 2026-06-30 — Automações, funil e mensagens rápidas (call Johari 29/06)
+
+A partir da consultoria com a Johari (Michelle/equipe, 29/06) e dos relatos
+JOH-20260630. **Migração necessária:** `032_quick_replies.sql`.
+
+Correções:
+
+- **Automação destrava após uma condição.** No construtor, ao adicionar um
+  passo de **condição ("Se")**, não era possível digitar/editar a mensagem
+  (nem o passo "Aguardar") dentro dos ramos Sim/Não — o campo ficava travado.
+  Afetava também a **mensagem de ausência / fora do expediente** (que usa uma
+  condição de horário). Corrigido na raiz; conserta editar, excluir e mover
+  passos dentro de uma condição.
+- **Mover oportunidade entre funis.** Agora o formulário da oportunidade tem
+  um seletor de **Funil**: dá para mover um card de um funil para outro (na 1ª
+  etapa do destino) sem precisar recriá-lo.
+
+Novidades:
+
+- **Mensagens rápidas.** Respostas prontas compartilhadas pela equipe,
+  gerenciadas em Configurações → "Mensagens rápidas". No chat, digite **`/`**
+  para buscar e inserir (ex.: dados do PIX, link do catálogo).
+- **Gatilho de automação "Mudança de etapa no funil".** Dispara ações (ex.:
+  adicionar tag, enviar mensagem) quando um card é movido para uma etapa.
+- **Tags na caixa de entrada.** As tags do contato aparecem na lista de
+  conversas e há um filtro por tag — triagem visual como no WhatsApp.
+- **Contatos:** filtro por tag e ordenação alfabética (A→Z).
+- **Funil:** barra de rolagem horizontal também no topo do quadro (desktop).
+
 ## [1.0.1] — 2026-06-25 — Correções: nome do contato + mídia recebida
 
 Correções a partir dos relatos da Johari (Michelle, 25/06):
