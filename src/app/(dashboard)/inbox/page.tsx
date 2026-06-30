@@ -183,13 +183,17 @@ export default function InboxPage() {
         return;
       }
 
+      // A conta pode ter VÁRIOS números (multi-número). `.maybeSingle()`
+      // estourava PGRST116 com 2+ números → data=null → banner "não
+      // conectado" falso. Conectado = existe ao menos um número conectado.
       const { data } = await supabase
         .from("whatsapp_config")
         .select("status")
         .eq("account_id", accountId)
-        .maybeSingle();
+        .eq("status", "connected")
+        .limit(1);
 
-      setWhatsappConnected(data?.status === "connected");
+      setWhatsappConnected((data?.length ?? 0) > 0);
     };
 
     checkConnection();

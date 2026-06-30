@@ -9,6 +9,15 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [1.1.2] — 2026-06-30 — Banner "WhatsApp não conectado" falso com múltiplos números
+
+- **Correção:** contas com **2+ números** de WhatsApp viam o aviso "WhatsApp®
+  não está conectado" no inbox **mesmo com os números conectados**. A checagem
+  usava `.maybeSingle()`, que estoura quando há mais de uma linha → o app
+  assumia "desconectado". Agora considera conectado se **existe ao menos um
+  número conectado** na conta. (Mesma classe de bug multi-número que o
+  `config-resolver` já corrigiu no envio.)
+
 ## [1.1.1] — 2026-06-30 — Envio livre em números Evolution (sem janela de 24h)
 
 - **Correção:** em conversas de números **Evolution** (Baileys / não-oficial),
