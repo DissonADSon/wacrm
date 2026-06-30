@@ -14,4 +14,4 @@ export const APP_DESCRIPTION =
 // MANTER EM SINCRONIA com o campo "version" do package.json a cada release.
 // Como é client-visible, é hardcoded aqui em vez de lido do package.json em runtime.
 export const APP_VERSION =
-  process.env.NEXT_PUBLIC_APP_VERSION?.trim() || "1.1.0";
+  process.env.NEXT_PUBLIC_APP_VERSION?.trim() || "1.1.1";

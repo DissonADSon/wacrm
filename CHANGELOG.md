@@ -9,6 +9,16 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [1.1.1] — 2026-06-30 — Envio livre em números Evolution (sem janela de 24h)
+
+- **Correção:** em conversas de números **Evolution** (Baileys / não-oficial),
+  o envio de texto livre ficava **bloqueado** pela "janela de 24h" — mas essa
+  regra é exclusiva da API oficial da Meta (`evohub`/`cloud`). Agora o limite
+  de 24h só se aplica a números Meta; **Evolution permite enviar a qualquer
+  momento**. A trava era 100% no front-end; o backend nunca a impôs. O provider
+  é resolvido por conversa (igual ao envio), então contas com múltiplos números
+  aplicam a regra certa em cada conversa.
+
 ## [1.1.0] — 2026-06-30 — Automações, funil e mensagens rápidas (call Johari 29/06)
 
 A partir da consultoria com a Johari (Michelle/equipe, 29/06) e dos relatos

@@ -162,7 +162,7 @@ export function MessageThread({
   contactPanelOpen,
   onToggleContactPanel,
 }: MessageThreadProps) {
-  const { user } = useAuth();
+  const { user, accountId } = useAuth();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
@@ -215,8 +215,53 @@ export function MessageThread({
     };
   }, []);
 
-  // 24-hour session timer
+  // Provider do número desta conversa (multi-número por conta). A janela de
+  // 24h é regra SÓ da API oficial da Meta (evohub/cloud); números Evolution
+  // (Baileys / não-oficial) NÃO têm esse limite — texto livre é sempre
+  // permitido. Resolve igual ao backend: pelo whatsapp_config_id da conversa,
+  // senão o número default da conta.
+  // Guarda o provider JUNTO do convId que o resolveu: ao trocar de conversa o
+  // provider antigo não "vaza" (numa conta mista Evolution+Cloud, herdar
+  // 'evolution' destravaria por engano uma thread Cloud com sessão expirada).
+  const [cfgProvider, setCfgProvider] = useState<{
+    convId: string | null;
+    provider: string | null;
+  }>({ convId: null, provider: null });
+  useEffect(() => {
+    if (!accountId) return;
+    const convId = conversation?.id ?? null;
+    const supabase = createClient();
+    let cancelled = false;
+    (async () => {
+      const cfgId = (conversation as { whatsapp_config_id?: string | null } | null)
+        ?.whatsapp_config_id;
+      let q = supabase
+        .from("whatsapp_config")
+        .select("provider")
+        .eq("account_id", accountId);
+      q = cfgId
+        ? q.eq("id", cfgId)
+        : q
+            .order("is_default", { ascending: false })
+            .order("created_at", { ascending: true });
+      const { data } = await q.limit(1).maybeSingle();
+      if (!cancelled) setCfgProvider({ convId, provider: (data?.provider as string) ?? null });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // conversation?.id basta: a config de um número não muda durante a conversa.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId, conversation?.id]);
+
+  // Só vale o provider resolvido PARA a conversa atual; senão default seguro
+  // (null → janela de 24h enforçada) durante o load / troca de thread.
+  const waProvider =
+    cfgProvider.convId === (conversation?.id ?? null) ? cfgProvider.provider : null;
+
+  // 24-hour session timer (regra Meta; Evolution é ilimitado → nunca expira)
   const sessionInfo = useMemo(() => {
+    if (waProvider === "evolution") return { expired: false, remaining: "" };
     if (!messages.length) return { expired: false, remaining: "" };
 
     // Find last customer message
@@ -240,7 +285,7 @@ export function MessageThread({
         : `${Math.floor(hoursLeft * 60)}min restantes`;
 
     return { expired, remaining };
-  }, [messages]);
+  }, [messages, waProvider]);
 
   // Store latest callback in a ref so fetchMessages doesn't need to
   // depend on `onMessagesLoaded` — otherwise parent re-renders cause
