@@ -95,7 +95,7 @@ vi.mock("./meta-send", () => ({
   engineSendTemplate: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
 }));
 
-import { runAutomationsForTrigger } from "./engine";
+import { runAutomationsForTrigger, minutesOfDayInSaoPaulo } from "./engine";
 
 const ACCOUNT = "acct-1";
 
@@ -256,3 +256,17 @@ function customStep(field: string, value: string) {
     step_config: { field, value },
   };
 }
+
+// Fuso de Brasília (UTC-3, sem horário de verão desde 2019). A condição
+// time_of_day (mensagem de ausência) depende disso valer em horário local BR,
+// não no UTC do container.
+describe("minutesOfDayInSaoPaulo", () => {
+  it("converte UTC para horário de Brasília (UTC-3)", () => {
+    // 21:30 UTC = 18:30 em São Paulo → 18*60+30 = 1110
+    expect(minutesOfDayInSaoPaulo(new Date("2026-07-01T21:30:00Z"))).toBe(1110);
+    // 03:00 UTC = 00:00 em São Paulo → 0 (borda da meia-noite)
+    expect(minutesOfDayInSaoPaulo(new Date("2026-07-01T03:00:00Z"))).toBe(0);
+    // 02:00 UTC = 23:00 do dia anterior em São Paulo → 23*60 = 1380
+    expect(minutesOfDayInSaoPaulo(new Date("2026-07-01T02:00:00Z"))).toBe(1380);
+  });
+});

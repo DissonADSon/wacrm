@@ -9,6 +9,14 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [1.1.3] — 2026-07-01 — Automação de horário (mensagem de ausência) em horário de Brasília
+
+- **Correção:** a condição de automação **"faixa de horário"** (usada na mensagem
+  de **fora do expediente**) era avaliada no fuso do servidor, que roda em **UTC**
+  — então uma janela configurada em horário local (ex.: 18:00–09:00) disparava
+  **3h adiantada** (às 15:00 de Brasília). Agora a faixa é avaliada em
+  **America/Sao_Paulo** (horário de Brasília), independente do fuso do servidor.
+
 ## [1.1.2] — 2026-06-30 — Banner "WhatsApp não conectado" falso com múltiplos números
 
 - **Correção:** contas com **2+ números** de WhatsApp viam o aviso "WhatsApp®

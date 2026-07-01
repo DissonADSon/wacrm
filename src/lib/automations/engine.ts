@@ -605,6 +605,29 @@ function triggerMatches(automation: Automation, ctx: AutomationContext | undefin
   })
 }
 
+/**
+ * Minutos desde a meia-noite no fuso de Brasília (America/Sao_Paulo).
+ *
+ * O container roda em UTC, então `Date#getHours()` devolveria a hora UTC — o
+ * que fazia a condição `time_of_day` (mensagem de ausência) disparar 3h cedo.
+ * Usamos `Intl` (dados de fuso do ICU embutido no Node, não dependem do
+ * `tzdata` do SO) para obter a hora local BR de forma determinística.
+ *
+ * ponytail: fuso fixo BR — todos os clientes são brasileiros. Tornar
+ * configurável por conta se um dia houver cliente em outro fuso.
+ */
+export function minutesOfDayInSaoPaulo(date: Date): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Sao_Paulo',
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(date)
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? '0')
+  const m = Number(parts.find((p) => p.type === 'minute')?.value ?? '0')
+  return h * 60 + m
+}
+
 async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): Promise<boolean> {
   const db = supabaseAdmin()
   switch (cfg.subject) {
@@ -642,8 +665,10 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       // (supports over-midnight ranges like "18:00-09:00").
       const [from, to] = (cfg.operand ?? '').split('-')
       if (!from || !to) return false
-      const now = new Date()
-      const mins = now.getHours() * 60 + now.getMinutes()
+      // O container roda em UTC; avaliamos a hora em America/Sao_Paulo para que
+      // a janela configurada valha em HORÁRIO DE BRASÍLIA (com getHours() em UTC
+      // a mensagem de ausência disparava 3h cedo).
+      const mins = minutesOfDayInSaoPaulo(new Date())
       const parse = (s: string) => {
         const [h, m] = s.split(':').map(Number)
         return (h || 0) * 60 + (m || 0)
