@@ -31,6 +31,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [editingTags, setEditingTags] = useState(false);
+  const [savingTags, setSavingTags] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
 
@@ -39,8 +42,8 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
     const supabase = createClient();
 
-    // Fetch deals, notes, and tags in parallel
-    const [dealsRes, notesRes, tagsRes] = await Promise.all([
+    // Fetch deals, notes, contact tags e todas as tags em paralelo
+    const [dealsRes, notesRes, tagsRes, allTagsRes] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
@@ -55,10 +58,12 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         .from("contact_tags")
         .select("id, tag_id, tags(*)")
         .eq("contact_id", contact.id),
+      supabase.from("tags").select("*").order("name"),
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
     if (notesRes.data) setNotes(notesRes.data);
+    if (allTagsRes.data) setAllTags(allTagsRes.data as Tag[]);
     if (tagsRes.data) {
       const mapped = tagsRes.data
         .filter((ct: Record<string, unknown>) => ct.tags)
@@ -115,6 +120,38 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     }
     setAddingNote(false);
   }, [contact, newNote, accountId]);
+
+  // Atribui/remove uma tag do contato direto na conversa. Espelha o
+  // padrão já usado no contact-detail-view (insert/delete em contact_tags).
+  const toggleTag = useCallback(
+    async (tag: Tag) => {
+      if (!contact) return;
+      setSavingTags(true);
+      const supabase = createClient();
+      const assigned = tags.find((t) => t.id === tag.id);
+      if (assigned) {
+        const { error } = await supabase
+          .from("contact_tags")
+          .delete()
+          .eq("contact_id", contact.id)
+          .eq("tag_id", tag.id);
+        if (!error) setTags((prev) => prev.filter((t) => t.id !== tag.id));
+      } else {
+        const { data, error } = await supabase
+          .from("contact_tags")
+          .insert({ contact_id: contact.id, tag_id: tag.id })
+          .select("id")
+          .single();
+        if (!error && data)
+          setTags((prev) => [
+            ...prev,
+            { ...tag, contact_tag_id: data.id as string },
+          ]);
+      }
+      setSavingTags(false);
+    },
+    [contact, tags],
+  );
 
   if (!contact) {
     return (
@@ -180,28 +217,70 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
           {/* Tags */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <TagIcon className="h-3 w-3" />
-              Tags
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <TagIcon className="h-3 w-3" />
+                Tags
+              </div>
+              <button
+                onClick={() => setEditingTags((v) => !v)}
+                className="text-[11px] font-medium text-primary hover:underline"
+              >
+                {editingTags ? "Concluir" : "Editar"}
+              </button>
             </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {tags.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">Nenhuma tag</p>
+
+            {editingTags ? (
+              allTags.length === 0 ? (
+                <p className="mt-2 px-1 text-xs text-muted-foreground">
+                  Nenhuma tag disponível. Crie tags nas Configurações.
+                </p>
               ) : (
-                tags.map((tag) => (
-                  <span
-                    key={tag.contact_tag_id}
-                    className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    style={{
-                      backgroundColor: `${tag.color}20`,
-                      color: tag.color,
-                    }}
-                  >
-                    {tag.name}
-                  </span>
-                ))
-              )}
-            </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {allTags.map((tag) => {
+                    const selected = tags.some((t) => t.id === tag.id);
+                    return (
+                      <button
+                        key={tag.id}
+                        onClick={() => toggleTag(tag)}
+                        disabled={savingTags}
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium transition-all cursor-pointer ${
+                          selected
+                            ? "ring-2 ring-primary ring-offset-1 ring-offset-card"
+                            : "opacity-50 hover:opacity-80"
+                        }`}
+                        style={{
+                          backgroundColor: `${tag.color}20`,
+                          color: tag.color,
+                        }}
+                      >
+                        {selected && <Check className="mr-1 size-3" />}
+                        {tag.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {tags.length === 0 ? (
+                  <p className="px-1 text-xs text-muted-foreground">Nenhuma tag</p>
+                ) : (
+                  tags.map((tag) => (
+                    <span
+                      key={tag.contact_tag_id}
+                      className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                      style={{
+                        backgroundColor: `${tag.color}20`,
+                        color: tag.color,
+                      }}
+                    >
+                      {tag.name}
+                    </span>
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
           {/* Divider */}

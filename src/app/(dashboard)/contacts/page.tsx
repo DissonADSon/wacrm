@@ -41,6 +41,7 @@ import {
   ChevronLeft,
   ChevronRight,
   SlidersHorizontal,
+  Clock,
 } from 'lucide-react';
 import { ContactForm } from '@/components/contacts/contact-form';
 import { ContactDetailView } from '@/components/contacts/contact-detail-view';
@@ -51,6 +52,8 @@ import { GatedButton } from '@/components/ui/gated-button';
 import { Checkbox } from '@/components/ui/checkbox';
 
 const PAGE_SIZE = 25;
+/** Valor sentinela do filtro de tag para "sem nenhuma tag". */
+const UNTAGGED = '__untagged__';
 
 interface ContactWithTags extends Contact {
   tags?: Tag[];
@@ -65,6 +68,7 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedTagId, setSelectedTagId] = useState<string>('');
+  const [recentFirst, setRecentFirst] = useState(false);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -109,15 +113,31 @@ export default function ContactsPage() {
     let query = supabase
       .from('contacts')
       .select('*', { count: 'exact' })
-      .order('name', { ascending: true, nullsFirst: false })
       .range(from, to);
+
+    // "Recentes" ordena por mais novos primeiro; senão, alfabético.
+    query = recentFirst
+      ? query.order('created_at', { ascending: false })
+      : query.order('name', { ascending: true, nullsFirst: false });
 
     if (search.trim()) {
       const term = `%${search.trim()}%`;
       query = query.or(`name.ilike.${term},phone.ilike.${term},email.ilike.${term}`);
     }
 
-    if (selectedTagId) {
+    if (selectedTagId === UNTAGGED) {
+      // "Sem tag": exclui todos os contatos que aparecem em contact_tags.
+      // ponytail: inverso do filtro por tag — carrega os ids taggeados e
+      // aplica NOT IN. Mesmo teto do .in() abaixo (alguns milhares);
+      // acima disso, virar NOT EXISTS/RPC.
+      const { data: tagged } = await supabase
+        .from('contact_tags')
+        .select('contact_id');
+      const ids = [...new Set((tagged ?? []).map((r) => r.contact_id))];
+      if (ids.length > 0) {
+        query = query.not('id', 'in', `(${ids.join(',')})`);
+      }
+    } else if (selectedTagId) {
       const { data: tagged } = await supabase
         .from('contact_tags')
         .select('contact_id')
@@ -172,7 +192,7 @@ export default function ContactsPage() {
 
     setContacts(enriched);
     setLoading(false);
-  }, [supabase, page, search, selectedTagId, tagsMap]);
+  }, [supabase, page, search, selectedTagId, recentFirst, tagsMap]);
 
   // Load-once-on-mount-ish data fetches. Each setter inside runs
   // inside an async promise completion (Supabase await), not
@@ -345,9 +365,11 @@ export default function ContactsPage() {
         <DropdownMenu>
           <DropdownMenuTrigger className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-muted">
             <SlidersHorizontal className="size-4 text-muted-foreground" />
-            {selectedTagId && tagsMap[selectedTagId]
-              ? tagsMap[selectedTagId].name
-              : 'Todas as tags'}
+            {selectedTagId === UNTAGGED
+              ? 'Sem tag'
+              : selectedTagId && tagsMap[selectedTagId]
+                ? tagsMap[selectedTagId].name
+                : 'Todas as tags'}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="max-h-72 w-56 overflow-y-auto border-border bg-popover">
             <DropdownMenuItem
@@ -358,6 +380,15 @@ export default function ContactsPage() {
               className={!selectedTagId ? 'text-primary' : ''}
             >
               Todas as tags
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setSelectedTagId(UNTAGGED);
+                setPage(0);
+              }}
+              className={selectedTagId === UNTAGGED ? 'text-primary' : ''}
+            >
+              Sem tag
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-border" />
             {Object.values(tagsMap).length === 0 && (
@@ -382,6 +413,22 @@ export default function ContactsPage() {
               ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setRecentFirst((v) => !v);
+            setPage(0);
+          }}
+          aria-pressed={recentFirst}
+          className={`border-border ${
+            recentFirst
+              ? 'bg-primary/10 text-primary hover:bg-primary/20'
+              : 'text-muted-foreground hover:bg-muted'
+          }`}
+        >
+          <Clock className="size-4" />
+          Recentes
+        </Button>
       </div>
 
       {/* Bulk action bar */}

@@ -43,7 +43,12 @@ const STATUS_LABELS: Record<ConversationStatus, string> = {
   closed: "Fechada",
 };
 
-type InboxFilter = ConversationStatus | "all" | "unread";
+type InboxFilter = ConversationStatus | "all" | "unread" | "recent";
+
+/** Janela do filtro "Recentes": conversas com atividade nos últimos 7 dias. */
+const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/** Valor sentinela do filtro de tag para "sem nenhuma tag". */
+const UNTAGGED = "__untagged__";
 
 type TagLite = { id: string; name: string; color: string };
 
@@ -61,6 +66,7 @@ function tagsOf(conv: Conversation): TagLite[] {
 const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
   { label: "Todas", value: "all" },
   { label: "Não lidas", value: "unread" },
+  { label: "Recentes (7 dias)", value: "recent" },
   { label: "Abertas", value: "open" },
   { label: "Pendentes", value: "pending" },
   { label: "Fechadas", value: "closed" },
@@ -76,6 +82,9 @@ export function ConversationList({
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [tagFilter, setTagFilter] = useState<string>("");
+  // Corte do filtro "Recentes" (timestamp). Calculado no clique — Date.now()
+  // é impuro e não pode rodar no render (react-hooks/purity).
+  const [recentCutoff, setRecentCutoff] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Keep the latest callback in a ref so the fetch effect below can
@@ -143,11 +152,19 @@ export function ConversationList({
 
     if (filter === "unread") {
       result = result.filter((c) => c.unread_count > 0);
+    } else if (filter === "recent") {
+      result = result.filter(
+        (c) =>
+          !!c.last_message_at &&
+          new Date(c.last_message_at).getTime() >= recentCutoff,
+      );
     } else if (filter !== "all") {
       result = result.filter((c) => c.status === filter);
     }
 
-    if (tagFilter) {
+    if (tagFilter === UNTAGGED) {
+      result = result.filter((c) => tagsOf(c).length === 0);
+    } else if (tagFilter) {
       result = result.filter((c) => tagsOf(c).some((t) => t.id === tagFilter));
     }
 
@@ -162,7 +179,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, tagFilter, search]);
+  }, [conversations, filter, tagFilter, search, recentCutoff]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -210,7 +227,12 @@ export function ConversationList({
               {FILTER_OPTIONS.map((opt) => (
                 <DropdownMenuItem
                   key={opt.value}
-                  onClick={() => setFilter(opt.value)}
+                  onClick={() => {
+                    setFilter(opt.value);
+                    if (opt.value === "recent") {
+                      setRecentCutoff(Date.now() - RECENT_WINDOW_MS);
+                    }
+                  }}
                   className={cn(
                     "text-sm",
                     filter === opt.value
@@ -226,7 +248,9 @@ export function ConversationList({
 
           <DropdownMenu>
             <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted">
-              {tagFilter && allTags.find((t) => t.id === tagFilter) ? (
+              {tagFilter === UNTAGGED ? (
+                "Sem tag"
+              ) : tagFilter && allTags.find((t) => t.id === tagFilter) ? (
                 <>
                   <span
                     className="size-2 rounded-full"
@@ -245,6 +269,12 @@ export function ConversationList({
                 className={cn("text-sm", !tagFilter ? "text-primary" : "text-popover-foreground")}
               >
                 Todas as tags
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setTagFilter(UNTAGGED)}
+                className={cn("text-sm", tagFilter === UNTAGGED ? "text-primary" : "text-popover-foreground")}
+              >
+                Sem tag
               </DropdownMenuItem>
               {allTags.length === 0 && (
                 <DropdownMenuItem disabled className="text-sm text-muted-foreground">

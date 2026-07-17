@@ -266,6 +266,16 @@ function StageColumn({
         {formatCurrency(totalValue, currency)}
       </p>
 
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onAddDeal(stage.id)}
+        className="mt-3 w-full justify-start border border-dashed border-border bg-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground"
+      >
+        <Plus className="mr-1 h-3 w-3" />
+        Adicionar oportunidade
+      </Button>
+
       <div
         ref={setNodeRef}
         className={`mt-3 flex flex-1 flex-col gap-2 rounded-lg transition-all ${
@@ -289,16 +299,6 @@ function StageColumn({
           ))
         )}
       </div>
-
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => onAddDeal(stage.id)}
-        className="mt-3 w-full justify-start border border-dashed border-border bg-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground"
-      >
-        <Plus className="mr-1 h-3 w-3" />
-        Adicionar oportunidade
-      </Button>
     </div>
   );
 }

@@ -7,11 +7,12 @@ import {
 } from "./currency";
 
 describe("formatCurrency", () => {
-  it("formats whole amounts with no minor units", () => {
+  it("formats amounts with the currency's minor units (centavos)", () => {
     // Use a non-breaking-space-tolerant check: Intl may insert NBSP.
     const out = formatCurrency(1234, "USD");
     expect(out).toContain("1,234");
-    expect(out).not.toContain(".00");
+    expect(out).toContain(".00");
+    expect(formatCurrency(1234.56, "USD")).toContain("1,234.56");
   });
 
   it("defaults to USD when no currency is given", () => {

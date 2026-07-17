@@ -409,7 +409,7 @@ export function DealForm({
 
               {linkedConversation && (
                 <Link
-                  href="/inbox"
+                  href={`/inbox?c=${linkedConversation.id}`}
                   className="mt-1 inline-flex items-center gap-1.5 self-start rounded-md bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
                 >
                   <MessageSquare className="h-3 w-3" />
@@ -425,9 +425,11 @@ export function DealForm({
                   <DollarSign className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     type="number"
+                    step="0.01"
+                    inputMode="decimal"
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
-                    placeholder="0"
+                    placeholder="0,00"
                     className="border-border bg-muted pl-7 text-foreground"
                   />
                 </div>

@@ -9,6 +9,26 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [1.1.4] — 2026-07-17 — Ajustes de UX a partir dos relatos da Johari (canal de erros)
+
+Sem migração. Melhorias reportadas por Michele (`JOH-20260717-1131-T5A`):
+
+- **Filtros "Recentes" e "Sem tag".** Na caixa de entrada, novo filtro **Recentes
+  (7 dias)** (por última atividade) e **Sem tag** (contatos sem nenhuma tag). Em
+  Contatos, botão **Recentes** (ordena por mais novos) e opção **Sem tag** no
+  filtro de tags (server-side, inverte a lista de ids taggeados).
+- **Valores com centavos.** `formatCurrency` passou a usar as casas decimais
+  naturais de cada moeda (BRL/USD → 2 casas) em vez de arredondar para inteiro —
+  conserta o valor das oportunidades em todas as telas (card, board, analytics,
+  dashboard, detalhe do contato). Input de valor com `step="0.01"`.
+- **Ir direto pra conversa pelo funil.** O atalho "Ir para a conversa" na
+  oportunidade agora abre a conversa daquele contato (`/inbox?c=<id>`) em vez de
+  cair na caixa de entrada genérica.
+- **Botão "Adicionar oportunidade" no topo** de cada coluna do funil (antes ficava
+  no rodapé). Drag-and-drop inalterado.
+- **Editar tags direto na conversa.** No painel do contato dentro da caixa de
+  entrada, botão **Editar** revela a lista de tags para atribuir/remover na hora.
+
 ## [1.1.3] — 2026-07-01 — Automação de horário (mensagem de ausência) em horário de Brasília
 
 - **Correção:** a condição de automação **"faixa de horário"** (usada na mensagem
