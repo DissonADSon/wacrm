@@ -9,6 +9,16 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [1.1.5] — 2026-07-21 — Aviso claro quando o template quebra uma regra da Meta
+
+Sem migração.
+
+- **Corpo que começa ou termina com `{{N}}` agora é barrado antes do envio.**
+  A Meta recusa esses templates devolvendo apenas `Invalid parameter`, sem dizer
+  o motivo — quem escreveu ficava sem saber o que corrigir. A validação passou a
+  apontar a regra e o que fazer. Descoberto ao cadastrar os templates da Johari
+  (`JOH-20260721-1402-J3Z`).
+
 ## [1.1.4] — 2026-07-17 — Ajustes de UX a partir dos relatos da Johari (canal de erros)
 
 Sem migração. Melhorias reportadas por Michele (`JOH-20260717-1131-T5A`):

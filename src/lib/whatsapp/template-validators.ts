@@ -98,6 +98,16 @@ export function validateBody(bodyText: string): number[] {
   }
   const indices = extractVariableIndices(bodyText);
   assertContiguous(indices, 'do corpo');
+  // Regra da Meta: o corpo não pode começar nem terminar com variável. Sem
+  // isto a submissão volta como "Invalid parameter" — genérico, sem apontar
+  // a causa; quem escreveu o template fica sem saber o que corrigir.
+  // Depois da contiguidade: aquele erro é mais específico quando vale.
+  const trimmed = bodyText.trim();
+  if (/^\{\{\d+\}\}/.test(trimmed) || /\{\{\d+\}\}$/.test(trimmed)) {
+    throw new Error(
+      'O corpo não pode começar nem terminar com uma variável {{N}} (regra da Meta). Escreva algum texto antes/depois dela.',
+    );
+  }
   return indices;
 }
 

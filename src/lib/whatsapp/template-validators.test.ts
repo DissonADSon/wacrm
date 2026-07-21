@@ -57,7 +57,16 @@ describe('validateBody', () => {
     expect(() => validateBody('Hi {{1}} {{3}}')).toThrow(/contiguous/);
   });
   it('accepts contiguous variables', () => {
-    expect(validateBody('Hi {{1}} {{2}}')).toEqual([1, 2]);
+    expect(validateBody('Hi {{1}}, pedido {{2}} enviado.')).toEqual([1, 2]);
+  });
+  // A Meta responde só "Invalid parameter" nestes dois casos — pegar aqui
+  // poupa uma ida perdida à API. Ver JOH-20260721-1402-J3Z.
+  it('rejects a body that starts or ends with a variable', () => {
+    expect(() => validateBody('{{1}}, seu pedido saiu.')).toThrow(/começar nem terminar/);
+    expect(() => validateBody('Código de rastreio: {{1}}')).toThrow(/começar nem terminar/);
+  });
+  it('accepts a variable in the middle', () => {
+    expect(validateBody('Código {{1}} enviado.')).toEqual([1]);
   });
 });
 
