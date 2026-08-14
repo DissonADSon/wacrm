@@ -66,14 +66,14 @@ export function SettingsOverview({
                 r.json(),
               )
             : Promise.resolve(null),
+          // Contagem por CONTA (o RLS já isola) — filtrar por user_id zerava
+          // o card para quem não cadastrou os templates.
+          supabase
+            .from('message_templates')
+            .select('id', { count: 'exact', head: true }),
           supabase
             .from('message_templates')
             .select('id', { count: 'exact', head: true })
-            .eq('user_id', userId),
-          supabase
-            .from('message_templates')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', userId)
             .eq('status', 'PENDING'),
           supabase
             .from('tags')

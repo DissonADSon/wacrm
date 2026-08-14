@@ -117,10 +117,13 @@ export function TemplatePicker({
         return;
       }
 
+      // Template é da CONTA, não de quem cadastrou: filtrar por user_id
+      // deixava o seletor vazio para o resto da equipe (era o que fazia o
+      // envio cair no fluxo legado e a Meta devolver failed). O RLS
+      // (message_templates_select → is_account_member) já isola a conta.
       const { data, error } = await supabase
         .from("message_templates")
         .select("*")
-        .eq("user_id", user.id)
         .eq("status", "APPROVED")
         .order("created_at", { ascending: false });
 

@@ -232,20 +232,24 @@ export function TemplateManager() {
       setLoading(false);
       return;
     }
-    fetchTemplates(user.id);
+    fetchTemplates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id]);
 
-  async function fetchTemplates(userId: string) {
+  async function fetchTemplates() {
     try {
       setLoading(true);
       // Carrega templates + campos personalizados (contato e card) em
       // paralelo. Os campos alimentam o <select> de fonte das variáveis.
+      //
+      // Sem filtro por user_id: template é da CONTA, não de quem cadastrou.
+      // Filtrar por usuário escondia da equipe os templates criados por um
+      // colega — a Johari tinha 4 aprovados e a tela dizia "nenhum ainda".
+      // O RLS (message_templates_select → is_account_member) já isola a conta.
       const [templatesRes, contactFieldsRes, dealFieldsRes] = await Promise.all([
         supabase
           .from('message_templates')
           .select('*')
-          .eq('user_id', userId)
           .order('created_at', { ascending: false }),
         supabase.from('custom_fields').select('*').order('field_name'),
         supabase.from('deal_custom_fields').select('*').order('field_name'),
@@ -351,7 +355,7 @@ export function TemplateManager() {
       }
       // Refresh first, then close — re-opening the dialog
       // immediately should not show a stale list.
-      if (user) await fetchTemplates(user.id);
+      if (user) await fetchTemplates();
       toast.success(
         data.dry_run
           ? isEdit
@@ -405,7 +409,7 @@ export function TemplateManager() {
           { duration: 10000 },
         );
       }
-      await fetchTemplates(user.id);
+      await fetchTemplates();
     } catch (err) {
       console.error('Template sync error:', err);
       toast.error(err instanceof Error ? err.message : 'Falha ao sincronizar os templates');
