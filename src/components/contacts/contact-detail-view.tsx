@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { formatCurrency } from '@/lib/currency';
@@ -33,6 +34,7 @@ import {
   Save,
   X,
   DollarSign,
+  MessageSquare,
 } from 'lucide-react';
 
 interface ContactDetailViewProps {
@@ -83,6 +85,8 @@ export function ContactDetailView({
   // Deals tab
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loadingDeals, setLoadingDeals] = useState(false);
+
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   const fetchContact = useCallback(async () => {
     if (!contactId) return;
@@ -168,6 +172,22 @@ export function ContactDetailView({
     setLoadingDeals(false);
   }, [contactId, supabase]);
 
+  // conversa do contato, para o atalho "Ir para a conversa" no cabeçalho
+  const fetchConversation = useCallback(async () => {
+    if (!contactId) {
+      setConversationId(null);
+      return;
+    }
+    const { data } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('contact_id', contactId)
+      .order('last_message_at', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    setConversationId(data?.id ?? null);
+  }, [contactId, supabase]);
+
   useEffect(() => {
     if (open && contactId) {
       fetchContact();
@@ -175,8 +195,9 @@ export function ContactDetailView({
       fetchNotes();
       fetchCustomFields();
       fetchDeals();
+      fetchConversation();
     }
-  }, [open, contactId, fetchContact, fetchTags, fetchNotes, fetchCustomFields, fetchDeals]);
+  }, [open, contactId, fetchContact, fetchTags, fetchNotes, fetchCustomFields, fetchDeals, fetchConversation]);
 
   async function copyPhone() {
     if (!contact) return;
@@ -404,6 +425,16 @@ export function ContactDetailView({
                       </span>
                     )}
                   </div>
+                  {conversationId && (
+                    <Link
+                      href={`/inbox?c=${conversationId}`}
+                      onClick={() => onOpenChange(false)}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
+                    >
+                      <MessageSquare className="size-3" />
+                      Ir para a conversa
+                    </Link>
+                  )}
                 </div>
               </div>
             </SheetHeader>

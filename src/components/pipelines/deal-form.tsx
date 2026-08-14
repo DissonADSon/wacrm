@@ -223,7 +223,9 @@ export function DealForm({
         .from("conversations")
         .select("*")
         .eq("contact_id", contactId)
-        .order("last_message_at", { ascending: false })
+        // nullsFirst: false — sem isto o limit(1) pegava a conversa vazia
+        // (last_message_at NULL) em vez da que tem histórico.
+        .order("last_message_at", { ascending: false, nullsFirst: false })
         .limit(1)
         .maybeSingle();
       if (cancelled) return;

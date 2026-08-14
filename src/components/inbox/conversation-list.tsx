@@ -112,7 +112,9 @@ export function ConversationList({
       const { data, error } = await supabase
         .from("conversations")
         .select("*, contact:contacts(*, contact_tags(tag:tags(id,name,color)))")
-        .order("last_message_at", { ascending: false });
+        // nullsFirst: false — em Postgres, DESC ordena NULL primeiro, então
+        // conversa sem nenhuma mensagem ficava grudada no topo da caixa de entrada.
+        .order("last_message_at", { ascending: false, nullsFirst: false });
 
       if (cancelled) return;
 
