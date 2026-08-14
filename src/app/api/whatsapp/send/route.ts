@@ -20,6 +20,7 @@ import {
   RATE_LIMITS,
 } from '@/lib/rate-limit'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
+import type { MessageTemplate } from '@/types'
 
 export async function POST(request: Request) {
   try {
@@ -71,6 +72,7 @@ export async function POST(request: Request) {
       template_name,
       template_language,
       template_params,
+      template_message_params,
       reply_to_message_id,
     } = body
 
@@ -217,27 +219,42 @@ export async function POST(request: Request) {
     let waMessageId = ''
     let workingPhone = sanitizedPhone
 
-    // Validate any locally stored template row up front: isMessageTemplate
-    // guards against a malformed row (e.g. from a partial sync) and lets us
-    // point the user to "Sync from Meta" before the send is attempted.
-    // Match on (account_id, name, language) — same triple the unique index
-    // enforces — so multi-language templates work correctly.
+    // Validate and resolve any locally stored template row up front:
+    // isMessageTemplate guards against a malformed row (e.g. from a partial sync)
+    // and lets us point the user to "Sync from Meta" before the send is attempted.
+    let templateRow: MessageTemplate | undefined
     if (message_type === 'template' && template_name) {
-      const { data } = await supabase
+      const targetLang = template_language || 'pt_BR'
+      let { data } = await supabase
         .from('message_templates')
         .select('*')
         .eq('account_id', accountId)
         .eq('name', template_name)
-        .eq('language', template_language || 'en_US')
+        .eq('language', targetLang)
         .maybeSingle()
-      if (data && !isMessageTemplate(data)) {
-        return NextResponse.json(
-          {
-            error:
-              'Template row is malformed locally — run "Sync from Meta" in Settings to repair it.',
-          },
-          { status: 500 },
-        )
+
+      if (!data) {
+        const { data: fallbackData } = await supabase
+          .from('message_templates')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('name', template_name)
+          .limit(1)
+          .maybeSingle()
+        if (fallbackData) data = fallbackData
+      }
+
+      if (data) {
+        if (!isMessageTemplate(data)) {
+          return NextResponse.json(
+            {
+              error:
+                'Template row is malformed locally — run "Sync from Meta" in Settings to repair it.',
+            },
+            { status: 500 },
+          )
+        }
+        templateRow = data as MessageTemplate
       }
     }
 
@@ -246,10 +263,10 @@ export async function POST(request: Request) {
         const result = await sendTemplate(cfg, {
           to: phone,
           templateName: template_name,
-          language: template_language || 'en_US',
-          // Legacy body-only fallback — only consulted when
-          // messageParams.body isn't set.
+          language: template_language || templateRow?.language || 'pt_BR',
           params: template_params || [],
+          template: templateRow,
+          messageParams: template_message_params,
         })
         return result.messageId
       }
