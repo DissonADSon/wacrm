@@ -33,10 +33,10 @@ describe('validateTemplateName', () => {
     expect(() => validateTemplateName('order_v2')).not.toThrow();
   });
   it('rejects uppercase', () => {
-    expect(() => validateTemplateName('OrderV2')).toThrow(/lowercase/);
+    expect(() => validateTemplateName('OrderV2')).toThrow(/minúscula|lowercase/i);
   });
   it('rejects empty', () => {
-    expect(() => validateTemplateName('')).toThrow(/required/);
+    expect(() => validateTemplateName('')).toThrow(/obrigatório|required/i);
   });
   it('rejects spaces and dashes', () => {
     expect(() => validateTemplateName('order v2')).toThrow();
@@ -46,15 +46,15 @@ describe('validateTemplateName', () => {
 
 describe('validateBody', () => {
   it('rejects empty', () => {
-    expect(() => validateBody('   ')).toThrow(/required/);
+    expect(() => validateBody('   ')).toThrow(/obrigatório|required/i);
   });
   it('rejects > 1024 chars', () => {
     expect(() => validateBody('x'.repeat(TEMPLATE_LIMITS.bodyMaxLength + 1))).toThrow(
-      /exceeds 1024/,
+      /1024/,
     );
   });
   it('rejects non-contiguous variables', () => {
-    expect(() => validateBody('Hi {{1}} {{3}}')).toThrow(/contiguous/);
+    expect(() => validateBody('Hi {{1}} {{3}}')).toThrow(/contíguas|contiguous/i);
   });
   it('accepts contiguous variables', () => {
     expect(validateBody('Hi {{1}}, pedido {{2}} enviado.')).toEqual([1, 2]);
@@ -75,10 +75,10 @@ describe('validateFooter', () => {
     expect(() => validateFooter(undefined)).not.toThrow();
   });
   it('rejects > 60 chars', () => {
-    expect(() => validateFooter('x'.repeat(61))).toThrow(/60 chars/);
+    expect(() => validateFooter('x'.repeat(61))).toThrow(/60/);
   });
   it('rejects variables in footer', () => {
-    expect(() => validateFooter('Powered by {{1}}')).toThrow(/cannot contain/);
+    expect(() => validateFooter('Powered by {{1}}')).toThrow(/variáveis|variable/i);
   });
 });
 
@@ -86,26 +86,26 @@ describe('validateHeader', () => {
   it('text header requires content', () => {
     expect(() =>
       validateHeader({ header_type: 'text', header_content: '' }),
-    ).toThrow(/requires header_content/);
+    ).toThrow(/header_content/);
   });
   it('text header rejects > 60 chars', () => {
     expect(() =>
       validateHeader({ header_type: 'text', header_content: 'x'.repeat(61) }),
-    ).toThrow(/60 chars/);
+    ).toThrow(/60/);
   });
   it('text header rejects more than one variable', () => {
     expect(() =>
       validateHeader({ header_type: 'text', header_content: '{{1}} {{2}}' }),
-    ).toThrow(/at most one variable/);
+    ).toThrow(/máximo uma variável|one variable/i);
   });
   it('text header requires variable to be {{1}}', () => {
     expect(() =>
       validateHeader({ header_type: 'text', header_content: 'Hello {{2}}' }),
-    ).toThrow(/must be \{\{1\}\}/);
+    ).toThrow(/deve ser \{\{1\}\}|must be \{\{1\}\}/i);
   });
   it('image header requires a URL or handle', () => {
     expect(() => validateHeader({ header_type: 'image' })).toThrow(
-      /requires either/,
+      /requer|requires/,
     );
   });
   it('image header accepts a URL', () => {
@@ -122,7 +122,7 @@ describe('validateHeader', () => {
         header_type: 'image',
         header_media_url: 'not a url',
       }),
-    ).toThrow(/valid URL/);
+    ).toThrow(/URL/);
   });
 });
 
@@ -136,7 +136,7 @@ describe('validateButtons', () => {
       type: 'QUICK_REPLY' as const,
       text: 'Hi',
     }));
-    expect(() => validateButtons(tooMany)).toThrow(/at most 10 buttons/);
+    expect(() => validateButtons(tooMany)).toThrow(/10 botões|10 buttons/i);
   });
   it('rejects > 2 URL buttons', () => {
     expect(() =>
@@ -145,7 +145,7 @@ describe('validateButtons', () => {
         { type: 'URL', text: 'b', url: 'https://x' },
         { type: 'URL', text: 'c', url: 'https://x' },
       ]),
-    ).toThrow(/At most 2 URL/);
+    ).toThrow(/2 botões de URL|2 URL/i);
   });
   it('rejects > 1 PHONE_NUMBER', () => {
     expect(() =>
@@ -153,7 +153,7 @@ describe('validateButtons', () => {
         { type: 'PHONE_NUMBER', text: 'a', phone_number: '+1' },
         { type: 'PHONE_NUMBER', text: 'b', phone_number: '+2' },
       ]),
-    ).toThrow(/At most 1 PHONE_NUMBER/);
+    ).toThrow(/1 botão PHONE_NUMBER|1 PHONE_NUMBER/i);
   });
   it('rejects > 1 COPY_CODE', () => {
     expect(() =>
@@ -161,7 +161,7 @@ describe('validateButtons', () => {
         { type: 'COPY_CODE', text: 'a', example: 'X' },
         { type: 'COPY_CODE', text: 'b', example: 'Y' },
       ]),
-    ).toThrow(/At most 1 COPY_CODE/);
+    ).toThrow(/1 botão COPY_CODE|1 COPY_CODE/i);
   });
   it('rejects QUICK_REPLY interleaved with CTA buttons', () => {
     expect(() =>
@@ -170,7 +170,7 @@ describe('validateButtons', () => {
         { type: 'URL', text: 'B', url: 'https://x' },
         { type: 'QUICK_REPLY', text: 'C' },
       ]),
-    ).toThrow(/cannot be interleaved/);
+    ).toThrow(/intercalados|interleaved/i);
   });
   it('accepts QUICK_REPLY then CTA in correct order', () => {
     expect(() =>
@@ -184,24 +184,24 @@ describe('validateButtons', () => {
   it('rejects empty button text', () => {
     expect(() =>
       validateButtons([{ type: 'QUICK_REPLY', text: '' }]),
-    ).toThrow(/missing text/);
+    ).toThrow(/texto/i);
   });
   it('rejects URL button without url', () => {
     expect(() =>
       validateButtons([{ type: 'URL', text: 'Go', url: '' }]),
-    ).toThrow(/missing url/);
+    ).toThrow(/url/i);
   });
   it('rejects URL button with invalid url', () => {
     expect(() =>
       validateButtons([{ type: 'URL', text: 'Go', url: 'not-a-url' }]),
-    ).toThrow(/invalid url/);
+    ).toThrow(/inválida|invalid/i);
   });
   it('rejects URL with {{1}} but no example', () => {
     expect(() =>
       validateButtons([
         { type: 'URL', text: 'Go', url: 'https://x/{{1}}' },
       ]),
-    ).toThrow(/Meta requires an example/);
+    ).toThrow(/requer um valor de exemplo|requires an example/i);
   });
   it('rejects URL with non-{{1}} variable', () => {
     expect(() =>
@@ -213,19 +213,19 @@ describe('validateButtons', () => {
           example: 'foo',
         },
       ]),
-    ).toThrow(/must be \{\{1\}\}/);
+    ).toThrow(/deve ser \{\{1\}\}|must be \{\{1\}\}/i);
   });
   it('rejects PHONE_NUMBER without phone_number', () => {
     expect(() =>
       validateButtons([
         { type: 'PHONE_NUMBER', text: 'Call', phone_number: '' },
       ]),
-    ).toThrow(/missing phone_number/);
+    ).toThrow(/sem phone_number|missing phone_number/i);
   });
   it('rejects COPY_CODE without example', () => {
     expect(() =>
       validateButtons([{ type: 'COPY_CODE', text: 'Copy', example: '' }]),
-    ).toThrow(/missing example/);
+    ).toThrow(/sem valor de exemplo|missing example/i);
   });
 });
 
@@ -237,7 +237,7 @@ describe('validateSampleValues', () => {
         1,
         0,
       ),
-    ).toThrow(/exactly 1 sample/);
+    ).toThrow(/forneça exatamente|exactly/i);
   });
   it('rejects empty sample values', () => {
     expect(() =>
@@ -246,7 +246,7 @@ describe('validateSampleValues', () => {
         1,
         0,
       ),
-    ).toThrow(/empty/);
+    ).toThrow(/vazio|empty/i);
   });
   it('accepts matching counts', () => {
     expect(() =>
@@ -279,8 +279,8 @@ describe('validateTemplatePayload — integration', () => {
     expect(() =>
       validateTemplatePayload({
         ...baseValid,
-        body_text: 'Hi {{1}}',
+        body_text: 'Hi {{1}} world',
       }),
-    ).toThrow(/exactly 1 sample/);
+    ).toThrow(/forneça exatamente|exactly/i);
   });
 });

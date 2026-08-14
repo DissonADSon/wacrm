@@ -105,19 +105,21 @@ describe("lastNDayKeys", () => {
 });
 
 describe("mondayIndex", () => {
+  // Datas com hora local explícita: `new Date("2026-05-18")` é meia-noite UTC,
+  // que em UTC-3 cai no domingo anterior e faz o índice andar um dia.
   it("maps Monday → 0 and Sunday → 6", () => {
-    expect(mondayIndex(new Date("2026-05-18"))).toBe(0); // Mon
-    expect(mondayIndex(new Date("2026-05-19"))).toBe(1); // Tue
-    expect(mondayIndex(new Date("2026-05-23"))).toBe(5); // Sat
-    expect(mondayIndex(new Date("2026-05-24"))).toBe(6); // Sun
+    expect(mondayIndex(new Date("2026-05-18T00:00:00"))).toBe(0); // Seg
+    expect(mondayIndex(new Date("2026-05-19T00:00:00"))).toBe(1); // Ter
+    expect(mondayIndex(new Date("2026-05-23T00:00:00"))).toBe(5); // Sáb
+    expect(mondayIndex(new Date("2026-05-24T00:00:00"))).toBe(6); // Dom
   });
 
   it("aligns with DOW_SHORT_MON_FIRST labels", () => {
-    expect(DOW_SHORT_MON_FIRST[mondayIndex(new Date("2026-05-18"))]).toBe(
-      "Mon",
-    );
-    expect(DOW_SHORT_MON_FIRST[mondayIndex(new Date("2026-05-24"))]).toBe(
-      "Sun",
-    );
+    expect(
+      DOW_SHORT_MON_FIRST[mondayIndex(new Date("2026-05-18T00:00:00"))],
+    ).toBe("Seg");
+    expect(
+      DOW_SHORT_MON_FIRST[mondayIndex(new Date("2026-05-24T00:00:00"))],
+    ).toBe("Dom");
   });
 });

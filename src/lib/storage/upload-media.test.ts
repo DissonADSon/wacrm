@@ -38,9 +38,11 @@ describe("MEDIA_MAX_BYTES_BY_KIND", () => {
     expect(MEDIA_MAX_BYTES_BY_KIND.image).toBe(5 * 1024 * 1024);
   });
 
-  it("caps video/audio/document at the 16 MB bucket limit", () => {
+  // Documento subiu para 95 MB junto com o bucket (migration 026); vídeo e
+  // áudio continuam em 16 MB porque o limite duro é da Meta, não do bucket.
+  it("caps video/audio at Meta's 16 MB limit and document at 95 MB", () => {
     expect(MEDIA_MAX_BYTES_BY_KIND.video).toBe(16 * 1024 * 1024);
     expect(MEDIA_MAX_BYTES_BY_KIND.audio).toBe(16 * 1024 * 1024);
-    expect(MEDIA_MAX_BYTES_BY_KIND.document).toBe(16 * 1024 * 1024);
+    expect(MEDIA_MAX_BYTES_BY_KIND.document).toBe(95 * 1024 * 1024);
   });
 });
