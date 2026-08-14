@@ -42,3 +42,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# agents: symlinks recriados por _AGENTS/agentes-claude/instalar.sh
+.claude/agents/
