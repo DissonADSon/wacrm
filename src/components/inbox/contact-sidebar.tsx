@@ -165,8 +165,12 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const initials = displayName.charAt(0).toUpperCase();
 
   return (
-    <div className="flex h-full w-70 flex-col border-l border-border bg-card">
-      <ScrollArea className="flex-1">
+    <div className="flex h-full w-70 flex-col overflow-hidden border-l border-border bg-card">
+      {/* `min-h-0` é o que faz rolar: item flex tem min-height:auto, então sem
+          ele a ScrollArea cresce até caber tudo e as Notas ficam cortadas
+          embaixo quando o contato tem muitas oportunidades (JOH-20261105-0840-LAT).
+          Mesmo conserto da conversation-list. */}
+      <ScrollArea className="min-h-0 flex-1">
         <div className="p-4">
           {/* Contact Info */}
           <div className="flex flex-col items-center text-center">
