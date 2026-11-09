@@ -347,6 +347,20 @@ export interface Deal {
   contact?: Contact;
   stage?: PipelineStage;
   assignee?: Profile;
+  tracking?: DealTrackingStatus | null;
+}
+
+export interface DealTrackingStatus {
+  deal_id: string;
+  codigo: string;
+  descricao: string | null;
+  cidade: string | null;
+  uf: string | null;
+  evento_em: string | null;
+  previsao_em: string | null;
+  entregue: boolean;
+  erro: string | null;
+  consultado_em: string;
 }
 
 export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';

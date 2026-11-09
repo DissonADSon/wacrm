@@ -1,7 +1,7 @@
 "use client";
 
 import type { Deal, PipelineStage } from "@/types";
-import { Calendar, Check, X } from "lucide-react";
+import { Calendar, Check, PackageCheck, Truck, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 
 interface DealCardProps {
@@ -89,6 +89,25 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           </span>
         )}
       </div>
+
+      {deal.tracking?.descricao && (
+        <div
+          title={`Rastreio ${deal.tracking.codigo}`}
+          className={`mt-2 flex items-start gap-1.5 text-[11px] leading-snug ${
+            deal.tracking.entregue ? "text-primary" : "text-muted-foreground"
+          }`}
+        >
+          {deal.tracking.entregue ? (
+            <PackageCheck className="mt-px h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <Truck className="mt-px h-3.5 w-3.5 shrink-0" />
+          )}
+          <span className="min-w-0 break-words">
+            {deal.tracking.descricao}
+            {deal.tracking.cidade && ` · ${deal.tracking.cidade}/${deal.tracking.uf}`}
+          </span>
+        </div>
+      )}
 
       {assigneeLabel && (
         <div className="mt-2 flex items-center justify-end">

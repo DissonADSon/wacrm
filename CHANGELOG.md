@@ -9,6 +9,17 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [1.1.7] — 2026-11-09 — Rastreio dos Correios no card
+
+- **Migration required:** `033_deal_tracking_status.sql`.
+- O card do funil mostra o último status dos Correios do campo personalizado
+  "Código de rastreio" (ex.: "Objeto em transferência · APARECIDA DE GOIANIA/GO");
+  entregue aparece em destaque. O formulário do card mostra cidade, data, previsão
+  e quando foi consultado.
+- Atualiza sozinho: o servidor consulta a API Rastro oficial (CWS) em lote a cada
+  30 min, só para objetos não entregues e consultados há mais de 3h. Requer
+  `CORREIOS_CHAVE_ACESSO` (chave de acesso do CWS) e `SUPABASE_SERVICE_ROLE_KEY`.
+
 ## [1.1.5] — 2026-07-21 — Aviso claro quando o template quebra uma regra da Meta
 
 Sem migração.

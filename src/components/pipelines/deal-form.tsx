@@ -14,6 +14,7 @@ import type {
   Pipeline,
   PipelineStage,
   Profile,
+  DealTrackingStatus,
 } from "@/types";
 import {
   Sheet,
@@ -546,6 +547,9 @@ export function DealForm({
                       placeholder={`Informe ${field.field_name}...`}
                       className="border-border bg-muted text-foreground"
                     />
+                    {/rastre/i.test(field.field_name) && deal?.tracking && (
+                      <RastreioResumo tracking={deal.tracking} />
+                    )}
                   </div>
                 ))}
               </div>
@@ -658,5 +662,37 @@ export function DealForm({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function dataHora(iso: string) {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function RastreioResumo({ tracking }: { tracking: DealTrackingStatus }) {
+  return (
+    <div className="rounded-md border border-border/60 bg-background/40 px-3 py-2 text-xs">
+      <p className={tracking.entregue ? "font-medium text-primary" : "font-medium text-foreground"}>
+        {tracking.descricao ?? tracking.erro ?? "Sem informação dos Correios"}
+      </p>
+      <p className="mt-0.5 text-muted-foreground">
+        {[
+          tracking.cidade && `${tracking.cidade}/${tracking.uf}`,
+          tracking.evento_em && dataHora(tracking.evento_em),
+          !tracking.entregue && tracking.previsao_em &&
+            `previsão ${new Date(tracking.previsao_em).toLocaleDateString("pt-BR")}`,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </p>
+      <p className="mt-0.5 text-[10px] text-muted-foreground/70">
+        Correios · consultado em {dataHora(tracking.consultado_em)}
+      </p>
+    </div>
   );
 }
