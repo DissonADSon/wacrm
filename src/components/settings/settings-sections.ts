@@ -6,6 +6,7 @@ import {
   PlugZap,
   Shield,
   Tags,
+  Truck,
   User,
   UsersRound,
   Zap,
@@ -30,6 +31,7 @@ export const SETTINGS_SECTIONS = [
   'quick-replies',
   'fields',
   'deals',
+  'correios',
   'members',
 ] as const;
 
@@ -55,6 +57,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   'quick-replies': { id: 'quick-replies', label: 'Mensagens rápidas', icon: Zap, group: 'workspace' },
   fields: { id: 'fields', label: 'Campos e tags', icon: Tags, group: 'workspace' },
   deals: { id: 'deals', label: 'Oportunidades e moeda', icon: Coins, group: 'workspace' },
+  correios: { id: 'correios', label: 'Rastreio Correios', icon: Truck, group: 'workspace' },
   members: { id: 'members', label: 'Membros da equipe', icon: UsersRound, group: 'workspace' },
 };
 
@@ -76,6 +79,7 @@ function isSection(value: string | null): value is SettingsSection {
  */
 export function resolveSection(raw: string | null): SettingsSection {
   if (raw === 'tags' || raw === 'custom-fields') return 'fields';
+  if (raw === 'correios-token') return 'correios';
   if (isSection(raw)) return raw;
   return DEFAULT_SECTION;
 }

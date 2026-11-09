@@ -66,6 +66,71 @@ function paraStatus(o: ObjetoApi): StatusRastreio {
   };
 }
 
+/**
+ * Mensagem de erro segura para log/resposta: só o status HTTP e o campo
+ * `msgs` do JSON de erro dos Correios. Nunca o corpo cru — se o servidor
+ * ecoar o Authorization, a chave vazaria. Qualquer ocorrência da chave
+ * que ainda apareça em `msgs` é mascarada.
+ */
+export async function erroHttp(res: Response, chave: string): Promise<string> {
+  let msgs = "";
+  try {
+    const corpo = (await res.json()) as { msgs?: unknown };
+    if (Array.isArray(corpo.msgs)) {
+      msgs = corpo.msgs.filter((m): m is string => typeof m === "string").join(" | ");
+    } else if (typeof corpo.msgs === "string") {
+      msgs = corpo.msgs;
+    }
+  } catch {
+    // corpo não é JSON: descarta.
+  }
+  if (chave) msgs = msgs.split(chave).join("***");
+  msgs = msgs.slice(0, 200);
+  return msgs ? `HTTP ${res.status}: ${msgs}` : `HTTP ${res.status}`;
+}
+
+export interface TesteChave {
+  ok: boolean;
+  /** Mensagem pronta para a tela, em PT-BR. Nunca contém a chave. */
+  mensagem: string;
+}
+
+/**
+ * Testa uma chave de acesso na API Rastro consultando um código real.
+ * 401/403 = chave recusada. 200 = chave aceita (mesmo que o objeto não
+ * tenha evento). Outros status = Correios com problema, chave não testada.
+ */
+export async function testarChave(chave: string, codigo: string): Promise<TesteChave> {
+  try {
+    const res = await fetch(`${RASTRO_URL}/${encodeURIComponent(codigo)}?resultado=U`, {
+      headers: {
+        Authorization: `Bearer ${chave}`,
+        Accept: "application/json",
+        "Accept-Language": "pt-BR",
+      },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (res.ok) return { ok: true, mensagem: "Chave aceita pelos Correios." };
+    const detalhe = await erroHttp(res, chave);
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false,
+        mensagem: `Os Correios recusaram esta chave (${detalhe}). Confira se copiou a chave inteira e se a API SRO-Rastro foi liberada nela.`,
+      };
+    }
+    return {
+      ok: false,
+      mensagem: `Não foi possível testar agora: os Correios responderam ${detalhe}. Tente de novo em alguns minutos.`,
+    };
+  } catch (e) {
+    const nome = e instanceof Error ? e.name : "erro";
+    const causa = e instanceof Error && e.cause && typeof e.cause === "object" && "code" in e.cause ? String(e.cause.code) : "";
+    console.warn(`[correios] teste da chave sem resposta: ${nome}${causa ? ` (${causa})` : ""}`);
+    const motivo = nome === "TimeoutError" || nome === "AbortError" ? "tempo esgotado" : "falha de rede";
+    return { ok: false, mensagem: `Não foi possível falar com os Correios (${motivo}). Tente de novo em alguns minutos.` };
+  }
+}
+
 export interface ResultadoConsulta {
   status: Map<string, StatusRastreio>;
   falhas: string[];
@@ -91,13 +156,12 @@ export async function consultarRastreios(
         },
         signal: AbortSignal.timeout(30_000),
       });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      }
+      if (!res.ok) throw new Error(await erroHttp(res, chave));
       const data = (await res.json()) as { objetos?: ObjetoApi[] };
       for (const o of data.objetos ?? []) status.set(o.codObjeto, paraStatus(o));
     } catch (e) {
-      falhas.push(`lote ${i / LOTE_MAX + 1}: ${e instanceof Error ? e.message : String(e)}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      falhas.push(`lote ${i / LOTE_MAX + 1}: ${chave ? msg.split(chave).join("***") : msg}`);
     }
   }
   return { status, falhas };

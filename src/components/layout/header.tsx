@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
+import { AvisoChaveCorreios } from "@/components/layout/aviso-chave-correios";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Painel",
@@ -70,6 +71,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
+        <AvisoChaveCorreios />
         <ModeToggle />
 
         <DropdownMenu>

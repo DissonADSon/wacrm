@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 import { SECTION_META, type SettingsSection } from './settings-sections';
+import { formatarData, frasePrazo, useCorreiosChave } from '@/hooks/use-correios-chave';
 import { SettingsChip, StatusDot } from './settings-chip';
 import { ROLE_META } from './role-meta';
 
@@ -137,6 +138,8 @@ export function SettingsOverview({
     };
   }, [user, accountId, canManageMembers]);
 
+  const { status: correios, carregando: correiosLoading } = useCorreiosChave();
+
   const displayName = profile?.full_name || profile?.email || 'Sua conta';
   const initial = (profile?.full_name || profile?.email || 'U').charAt(0).toUpperCase();
   const roleMeta = accountRole ? ROLE_META[accountRole] : null;
@@ -210,6 +213,22 @@ export function SettingsOverview({
               counts?.customFields ?? 0
             } campo${counts?.customFields === 1 ? '' : 's'} personalizado${counts?.customFields === 1 ? '' : 's'}`,
     },
+    ...(correios?.configurada
+      ? [
+          {
+            section: 'correios' as const,
+            loading: correiosLoading,
+            subtitle: (
+              <>
+                <StatusDot tone={correios.precisa_renovacao ? 'muted' : 'ok'} />
+                {correios.ilegivel
+                  ? 'Chave precisa ser salva de novo'
+                  : `Chave até ${formatarData(correios.expira_em)} · ${frasePrazo(correios.dias_para_expirar)}`}
+              </>
+            ),
+          },
+        ]
+      : []),
     {
       section: 'appearance',
       loading: false,

@@ -9,6 +9,22 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [1.1.8] — 2026-11-09 — Chave dos Correios renovada pelo próprio cliente
+
+- **Migration required:** `034_correios_config.sql` (tabela nova, só service role).
+- Configurações > **Rastreio Correios** (`/settings/correios-token`): mostra até
+  quando a chave vale, o passo a passo com links para gerar a nova no CWS e o
+  campo para colar. O CRM testa a chave nos Correios antes de salvar e guarda
+  cifrada; o agendador usa a nova na rodada seguinte, sem redeploy.
+- Faltando 3 dias ou menos, administradores veem um selo no cabeçalho e um pop-up
+  ao abrir o CRM com o link para a troca. Some quando a chave nova é salva.
+- Rotas `GET /api/correios/token-status` e `POST /api/correios/token-update`
+  (admin+). Nenhuma das duas devolve a chave.
+- Rastreio: exclusão e atualização em lotes de 100 ids (evita 414), paginação
+  pelo total (`count: exact`) e limpeza pulada se a leitura vier incompleta, erro
+  HTTP sem corpo cru no log, código gravado é o do campo, `register()` não derruba
+  o boot. Chave vencida: a rodada daquela conta é pulada, o app segue no ar.
+
 ## [1.1.7] — 2026-11-09 — Rastreio dos Correios no card
 
 - **Migration required:** `033_deal_tracking_status.sql`.

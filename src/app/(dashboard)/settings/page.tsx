@@ -16,6 +16,7 @@ import { QuickRepliesPanel } from '@/components/settings/quick-replies-panel';
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
 import { DealsSettings } from '@/components/settings/deals-settings';
 import { MembersTab } from '@/components/settings/members-tab';
+import { CorreiosTokenPanel } from '@/components/settings/correios-token-panel';
 import {
   resolveSection,
   type SettingsSection,
@@ -60,6 +61,7 @@ export default function SettingsPage() {
     'quick-replies': <QuickRepliesPanel />,
     fields: <FieldsAndTagsPanel />,
     deals: <DealsSettings />,
+    correios: <CorreiosTokenPanel />,
     members: <MembersTab />,
   };
 
