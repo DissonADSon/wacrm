@@ -41,6 +41,13 @@ function foiEntregue(e: EventoApi | undefined): boolean {
   return !!e && ["BDE", "BDI", "BDR"].includes(e.codigo ?? "") && e.tipo === "01";
 }
 
+// Os Correios mandam hora de Brasília sem offset; respeita offset/Z se vier.
+function horaBrasilia(v: string | undefined): string | null {
+  if (!v) return null;
+  const iso = /(Z|[+-]\d{2}:?\d{2})$/.test(v) ? v : `${v}-03:00`;
+  return Number.isNaN(Date.parse(iso)) ? null : new Date(iso).toISOString();
+}
+
 function paraStatus(o: ObjetoApi): StatusRastreio {
   const e = o.eventos?.[0];
   const cidade = e?.unidade?.endereco?.cidade ?? null;
@@ -52,35 +59,46 @@ function paraStatus(o: ObjetoApi): StatusRastreio {
     evento_tipo: e?.tipo ?? null,
     cidade,
     uf: uf === "BR" && !cidade ? null : uf,
-    evento_em: e?.dtHrCriado ? `${e.dtHrCriado}-03:00` : null,
-    previsao_em: o.dtPrevista ? `${o.dtPrevista}-03:00` : null,
+    evento_em: horaBrasilia(e?.dtHrCriado),
+    previsao_em: horaBrasilia(o.dtPrevista),
     entregue: foiEntregue(e),
     erro: e ? null : (o.mensagem ?? "Sem eventos"),
   };
 }
 
+export interface ResultadoConsulta {
+  status: Map<string, StatusRastreio>;
+  falhas: string[];
+}
+
+// Um lote com erro não derruba os outros: devolve o que deu certo e as falhas.
 export async function consultarRastreios(
   codigos: string[],
   chave: string,
-): Promise<Map<string, StatusRastreio>> {
-  const resultado = new Map<string, StatusRastreio>();
+): Promise<ResultadoConsulta> {
+  const status = new Map<string, StatusRastreio>();
+  const falhas: string[] = [];
   for (let i = 0; i < codigos.length; i += LOTE_MAX) {
     const lote = codigos.slice(i, i + LOTE_MAX);
     const qs = new URLSearchParams(lote.map((c) => ["codigosObjetos", c]));
     qs.set("resultado", "U");
-    const res = await fetch(`${RASTRO_URL}?${qs}`, {
-      headers: {
-        Authorization: `Bearer ${chave}`,
-        Accept: "application/json",
-        "Accept-Language": "pt-BR",
-      },
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) {
-      throw new Error(`Correios Rastro HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    try {
+      const res = await fetch(`${RASTRO_URL}?${qs}`, {
+        headers: {
+          Authorization: `Bearer ${chave}`,
+          Accept: "application/json",
+          "Accept-Language": "pt-BR",
+        },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      }
+      const data = (await res.json()) as { objetos?: ObjetoApi[] };
+      for (const o of data.objetos ?? []) status.set(o.codObjeto, paraStatus(o));
+    } catch (e) {
+      falhas.push(`lote ${i / LOTE_MAX + 1}: ${e instanceof Error ? e.message : String(e)}`);
     }
-    const data = (await res.json()) as { objetos?: ObjetoApi[] };
-    for (const o of data.objetos ?? []) resultado.set(o.codObjeto, paraStatus(o));
   }
-  return resultado;
+  return { status, falhas };
 }

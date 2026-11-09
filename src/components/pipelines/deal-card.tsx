@@ -104,7 +104,8 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           )}
           <span className="min-w-0 break-words">
             {deal.tracking.descricao}
-            {deal.tracking.cidade && ` · ${deal.tracking.cidade}/${deal.tracking.uf}`}
+            {deal.tracking.cidade &&
+              ` · ${deal.tracking.cidade}${deal.tracking.uf ? `/${deal.tracking.uf}` : ""}`}
           </span>
         </div>
       )}

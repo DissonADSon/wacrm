@@ -682,7 +682,7 @@ function RastreioResumo({ tracking }: { tracking: DealTrackingStatus }) {
       </p>
       <p className="mt-0.5 text-muted-foreground">
         {[
-          tracking.cidade && `${tracking.cidade}/${tracking.uf}`,
+          tracking.cidade && `${tracking.cidade}${tracking.uf ? `/${tracking.uf}` : ""}`,
           tracking.evento_em && dataHora(tracking.evento_em),
           !tracking.entregue && tracking.previsao_em &&
             `previsão ${new Date(tracking.previsao_em).toLocaleDateString("pt-BR")}`,

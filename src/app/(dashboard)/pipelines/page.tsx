@@ -97,12 +97,19 @@ export default function PipelinesPage() {
 
   const loadDeals = useCallback(
     async (pipelineId: string) => {
-      const { data } = await supabase
-        .from("deals")
-        .select("*, contact:contacts(*), assignee:profiles!deals_assigned_to_fkey(*), tracking:deal_tracking_status(*)")
-        .eq("pipeline_id", pipelineId)
-        .order("created_at", { ascending: false });
-      return (data ?? []) as Deal[];
+      const base = "*, contact:contacts(*), assignee:profiles!deals_assigned_to_fkey(*)";
+      const consulta = (colunas: string) =>
+        supabase
+          .from("deals")
+          .select(colunas)
+          .eq("pipeline_id", pipelineId)
+          .order("created_at", { ascending: false });
+      const { data, error } = await consulta(`${base}, tracking:deal_tracking_status(*)`);
+      if (!error) return (data ?? []) as unknown as Deal[];
+      // Rastreio é extra: se o cache falhar, o funil carrega sem ele.
+      console.error("[funil] rastreio indisponível", error.message);
+      const semRastreio = await consulta(base);
+      return (semRastreio.data ?? []) as unknown as Deal[];
     },
     [supabase],
   );

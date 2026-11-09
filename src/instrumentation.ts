@@ -1,7 +1,10 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   const chave = process.env.CORREIOS_CHAVE_ACESSO;
-  if (!chave || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+  if (!chave || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.log("[rastreio] desligado: falta CORREIOS_CHAVE_ACESSO ou SUPABASE_SERVICE_ROLE_KEY");
+    return;
+  }
 
   // Produção roda 1 réplica sem cron externo; o agendador mora no processo.
   const g = globalThis as { __rastreioAgendado?: boolean };
