@@ -71,7 +71,9 @@ export function AvisoChaveCorreios() {
     ? "A chave dos Correios precisa ser salva de novo"
     : vencida
       ? "A chave dos Correios venceu"
-      : `A chave dos Correios ${frasePrazo(status.dias_para_expirar)}`;
+      : status.dias_para_expirar != null && status.dias_para_expirar > 1
+        ? `Faltam ${status.dias_para_expirar} dias para a chave dos Correios vencer`
+        : `A chave dos Correios ${frasePrazo(status.dias_para_expirar)}`;
   const selo = status.ilegivel
     ? "Chave dos Correios: salvar de novo"
     : vencida
