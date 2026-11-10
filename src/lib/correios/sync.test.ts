@@ -72,7 +72,13 @@ describe("todas(): pagina pelo total", () => {
 });
 
 /** Supabase falso via fetch: responde por tabela e registra as URLs. */
-function supabaseFalso(opts: { valores: unknown[]; salvos: unknown[]; contagemSalvos?: number }) {
+function supabaseFalso(opts: {
+  valores: unknown[];
+  salvos: unknown[];
+  contagemSalvos?: number;
+  campos?: unknown[];
+  contagemCampos?: number;
+}) {
   const chamadas: { metodo: string; url: string }[] = [];
   const corpos: unknown[] = [];
   const fetchFalso = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -89,7 +95,10 @@ function supabaseFalso(opts: { valores: unknown[]; salvos: unknown[]; contagemSa
       const parte = linhas.slice(de, de + limite);
       return json(parte, 200, { "Content-Range": `${de}-${de + parte.length - 1}/${total}` });
     };
-    if (tabela === "deal_custom_fields") return json([{ id: "campo-1" }]);
+    if (tabela === "deal_custom_fields") {
+      const campos = opts.campos ?? [{ id: "campo-1", account_id: uuid(99) }];
+      return fatia(campos, opts.contagemCampos ?? campos.length);
+    }
     if (tabela === "deal_custom_values") return fatia(opts.valores, opts.valores.length);
     if (tabela === "deal_tracking_status") {
       if (metodo === "GET") return fatia(opts.salvos, opts.contagemSalvos ?? opts.salvos.length);
@@ -142,5 +151,28 @@ describe("sincronizarRastreios", () => {
     const gravado = corpos.flat()[0] as { codigo: string; deal_id: string };
     expect(gravado.codigo).toBe("AA123456785BR");
     expect(gravado.deal_id).toBe(uuid(7));
+  });
+
+  it("leitura de campos cortada pelo limite não apaga status", async () => {
+    const salvos = [{ deal_id: uuid(1), account_id: uuid(99), codigo: "AA123456785BR", entregue: true, consultado_em: new Date().toISOString() }];
+    const { admin, chamadas } = supabaseFalso({ valores: [], salvos, contagemCampos: 3000 });
+    const r = await sincronizarRastreios(admin, CHAVE);
+    expect(r.removidos).toBe(0);
+    expect(chamadas.some((c) => c.metodo === "DELETE")).toBe(false);
+  });
+
+  it("contas excluídas ficam fora sem not.in na URL", async () => {
+    const contaFora = uuid(500);
+    const excluir = Array.from({ length: 300 }, (_, i) => uuid(1000 + i)).concat(contaFora);
+    const salvos = [{ deal_id: uuid(2), account_id: contaFora, codigo: "AA123456785BR", entregue: true, consultado_em: new Date().toISOString() }];
+    const campos = [{ id: "campo-fora", account_id: contaFora }];
+    const { admin, chamadas } = supabaseFalso({ valores: [], salvos, campos });
+    const r = await sincronizarRastreios(admin, CHAVE, { excluir });
+    expect(r.removidos).toBe(0);
+    expect(chamadas.some((c) => c.metodo === "DELETE")).toBe(false);
+    for (const c of chamadas) {
+      expect(c.url).not.toContain("not.in");
+      expect(c.url.length).toBeLessThan(5000);
+    }
   });
 });

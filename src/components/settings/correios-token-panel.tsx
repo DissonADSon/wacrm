@@ -105,6 +105,10 @@ function CartaoStatus({ status, carregando }: { status: StatusChaveCorreios | nu
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" /> Carregando...
           </div>
+        ) : status && !status.pode_editar ? (
+          <p className="text-sm text-muted-foreground">
+            A validade da chave só aparece para administradores da conta.
+          </p>
         ) : !status?.configurada ? (
           <p className="text-sm text-muted-foreground">
             Nenhuma chave cadastrada. O rastreio dos pedidos está desligado até você salvar uma chave abaixo.
@@ -201,7 +205,7 @@ function PassoAPasso() {
             </>,
             <>
               Escolha <strong>&ldquo;APIs restritas por contrato&rdquo;</strong> e digite o número do contrato dos
-              Correios. As APIs do contrato aparecem todas; confira se a <strong>SRO-Rastro</strong> está na lista.
+              Correios. Todas as APIs do contrato aparecem: libere a <strong>SRO-Rastro</strong> (sem ela a chave é recusada).
             </>,
             <>
               Clique em <strong>&ldquo;Criar nova chave&rdquo;</strong>. A chave aparece na tela: copie ela inteira.

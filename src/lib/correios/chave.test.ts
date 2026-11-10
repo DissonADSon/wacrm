@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { dataValida, diasAte, somarDias } from "./chave";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { carregarChaves, dataValida, diasAte, somarDias } from "./chave";
 
 // 09/11/2026 23:30 em Brasília = 10/11 02:30 UTC: ainda é dia 09 aqui.
 const AGORA = new Date("2026-11-10T02:30:00Z");
@@ -21,3 +21,30 @@ describe("chave: prazos", () => {
     expect(dataValida(null)).toBe(false);
   });
 });
+
+describe("chave do ambiente: validade", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const adminSemPainel = {
+    from: () => ({ select: () => ({ returns: async () => ({ data: [], error: null }) }) }),
+  } as never;
+
+  it("sem CORREIOS_CHAVE_EXPIRA_EM a validade é desconhecida (null), não inventada", async () => {
+    vi.stubEnv("CORREIOS_CHAVE_ACESSO", "x");
+    vi.stubEnv("CORREIOS_CHAVE_EXPIRA_EM", "");
+    const r = await carregarChaves(adminSemPainel);
+    expect(r.ambiente?.expiraEm).toBeNull();
+  });
+
+  it("data no formato errado vira null", async () => {
+    vi.stubEnv("CORREIOS_CHAVE_ACESSO", "x");
+    vi.stubEnv("CORREIOS_CHAVE_EXPIRA_EM", "08/05/2027");
+    expect((await carregarChaves(adminSemPainel)).ambiente?.expiraEm).toBeNull();
+  });
+
+  it("data válida é usada", async () => {
+    vi.stubEnv("CORREIOS_CHAVE_ACESSO", "x");
+    vi.stubEnv("CORREIOS_CHAVE_EXPIRA_EM", "2027-05-08");
+    expect((await carregarChaves(adminSemPainel)).ambiente?.expiraEm).toBe("2027-05-08");
+  });
+});
+

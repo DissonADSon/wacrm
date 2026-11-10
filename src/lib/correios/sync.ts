@@ -82,17 +82,17 @@ export async function sincronizarRastreios(
   const vazio = { consultados: 0, gravados: 0, soErro: 0, removidos: 0, falhas: [] as string[] };
   if (filtro.incluir && !filtro.incluir.length) return vazio;
 
-  let qCampos = admin
-    .from("deal_custom_fields")
-    .select("id, account_id")
-    .ilike("field_name", "%rastre%")
-    .order("created_at");
-  if (filtro.incluir) qCampos = qCampos.in("account_id", filtro.incluir);
-  const { data: camposTodos, error: errCampos } = await qCampos;
-  if (errCampos) throw new Error(errCampos.message);
+  const camposLidos = await todas<{ id: string; account_id: string }>((de, ate) => {
+    let q = admin
+      .from("deal_custom_fields")
+      .select("id, account_id", { count: "exact" })
+      .ilike("field_name", "%rastre%");
+    if (filtro.incluir) q = q.in("account_id", filtro.incluir);
+    return q.order("created_at").order("id").range(de, ate).returns<{ id: string; account_id: string }[]>();
+  });
   // `excluir` pode ter muitas contas: filtra em memória para não estourar a URL.
   const excluidas = new Set(filtro.excluir ?? []);
-  const campos = (camposTodos ?? []).filter((c) => !excluidas.has(c.account_id as string));
+  const campos = camposLidos.linhas.filter((c) => !excluidas.has(c.account_id));
   if (!campos?.length) return vazio;
 
   const ids = campos.map((c) => c.id as string);
@@ -131,7 +131,7 @@ export async function sincronizarRastreios(
   // status de cards que só ficaram fora da página.
   const falhas: string[] = [];
   let removidos: string[] = [];
-  if (valores.completa && salvos.completa) {
+  if (camposLidos.completa && valores.completa && salvos.completa) {
     removidos = salvos.linhas.filter((s) => atual.get(s.deal_id)?.codigo !== s.codigo).map((s) => s.deal_id);
     if (removidos.length) {
       await emLotes(removidos, (lote) => admin.from("deal_tracking_status").delete().in("deal_id", lote));

@@ -51,7 +51,9 @@ export function dataValida(v: unknown): v is string {
 // desconhecida (null): o agendador não pula a chave e a tela diz "sem data".
 function expiraEmAmbiente(): string | null {
   const v = process.env.CORREIOS_CHAVE_EXPIRA_EM;
-  return dataValida(v) ? v : null;
+  if (dataValida(v)) return v;
+  if (v) console.warn(`[rastreio] CORREIOS_CHAVE_EXPIRA_EM inválida ("${v}"); use AAAA-MM-DD`);
+  return null;
 }
 
 interface LinhaConfig {
