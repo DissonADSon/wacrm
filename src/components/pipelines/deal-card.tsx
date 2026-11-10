@@ -1,7 +1,7 @@
 "use client";
 
 import type { Deal, PipelineStage } from "@/types";
-import { Calendar, Check, PackageCheck, Truck, X } from "lucide-react";
+import { Calendar, Check, CircleAlert, Clock, MessageCircleCheck, PackageCheck, Truck, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 
 interface DealCardProps {
@@ -19,6 +19,23 @@ function formatDate(dateStr: string) {
   });
 }
 
+function formatHora(iso: string) {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  });
+}
+
+function avisoAtual(deal: Deal) {
+  const lista = (deal.avisos ?? []).filter((a) => a.status !== "legado");
+  if (!lista.length) return null;
+  // O código mais recente do card é o que vale.
+  return lista.reduce((a, b) => (a.criado_em >= b.criado_em ? a : b));
+}
+
 function initials(name?: string, fallback?: string) {
   const source = (name || fallback || "?").trim();
   if (!source) return "?";
@@ -28,6 +45,7 @@ function initials(name?: string, fallback?: string) {
 export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
   const contactLabel = deal.contact?.name || deal.contact?.phone || "Sem contato";
   const assigneeLabel = deal.assignee?.full_name || null;
+  const aviso = avisoAtual(deal);
 
   return (
     <button
@@ -106,6 +124,30 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
             {deal.tracking.descricao}
             {deal.tracking.cidade &&
               ` · ${deal.tracking.cidade}${deal.tracking.uf ? `/${deal.tracking.uf}` : ""}`}
+          </span>
+        </div>
+      )}
+
+      {aviso && (
+        <div
+          title={aviso.erro ?? `Código ${aviso.codigo}${aviso.canal ? ` · ${aviso.canal}` : ""}`}
+          className={`mt-1.5 flex items-start gap-1.5 text-[11px] leading-snug ${
+            aviso.status === "falhou" ? "text-red-400" : "text-muted-foreground"
+          }`}
+        >
+          {aviso.status === "enviado" ? (
+            <MessageCircleCheck className="mt-px h-3.5 w-3.5 shrink-0" />
+          ) : aviso.status === "falhou" ? (
+            <CircleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <Clock className="mt-px h-3.5 w-3.5 shrink-0" />
+          )}
+          <span className="min-w-0 break-words">
+            {aviso.status === "enviado"
+              ? `Rastreio enviado ao cliente${aviso.enviado_em ? ` · ${formatHora(aviso.enviado_em)}` : ""}`
+              : aviso.status === "falhou"
+                ? `Rastreio não enviado ao cliente: ${aviso.erro ?? "erro desconhecido"}`
+                : "Enviando rastreio ao cliente…"}
           </span>
         </div>
       )}

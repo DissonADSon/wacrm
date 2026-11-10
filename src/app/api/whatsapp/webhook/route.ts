@@ -354,6 +354,23 @@ export async function handleStatusUpdate(status: {
     console.error('Error updating message status:', msgErr)
   }
 
+  // Aviso de rastreio: a Meta aceita o envio e só avisa a falha depois
+  // (ex.: 131042, conta sem pagamento). Casa pelo wamid, que é único.
+  if (status.status === 'failed' && status.id) {
+    const motivo = status.errors?.[0]
+    const { error: avisoErr } = await supabaseAdmin()
+      .from('deal_tracking_notice')
+      .update({
+        status: 'falhou',
+        erro: motivo
+          ? `WhatsApp recusou (${motivo.code}): ${motivo.title}`.slice(0, 200)
+          : 'O WhatsApp não entregou a mensagem',
+      })
+      .eq('message_id', status.id)
+      .eq('status', 'enviado')
+    if (avisoErr) console.error('Error updating tracking notice:', avisoErr)
+  }
+
   // 2) Mirror onto broadcast_recipients via whatsapp_message_id
   //    (added in migration 003). The aggregate trigger on
   //    broadcast_recipients re-derives the parent broadcast's

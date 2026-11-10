@@ -68,6 +68,26 @@ export async function register() {
 
     setTimeout(rodar, 60_000);
     setInterval(rodar, 30 * 60_000);
+
+    // Aviso ao cliente sai logo que o código entra no card: rodada curta,
+    // independente da consulta aos Correios (não precisa de chave).
+    let avisando = false;
+    const avisar = async () => {
+      if (avisando) return;
+      avisando = true;
+      try {
+        const { supabaseAdmin } = await import("@/lib/automations/admin-client");
+        const { avisarNovosCodigos } = await import("@/lib/correios/aviso");
+        const r = await avisarNovosCodigos(supabaseAdmin());
+        if (r.novos || r.retomados || r.erros.length) console.log("[aviso-rastreio]", JSON.stringify(r));
+      } catch (e) {
+        console.error("[aviso-rastreio] falha", e instanceof Error ? e.message : e);
+      } finally {
+        avisando = false;
+      }
+    };
+    setTimeout(avisar, 90_000);
+    setInterval(avisar, 2 * 60_000);
   } catch (e) {
     console.error("[rastreio] não agendado", e instanceof Error ? e.message : e);
   }

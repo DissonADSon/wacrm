@@ -104,7 +104,9 @@ export default function PipelinesPage() {
           .select(colunas)
           .eq("pipeline_id", pipelineId)
           .order("created_at", { ascending: false });
-      const { data, error } = await consulta(`${base}, tracking:deal_tracking_status(*)`);
+      const { data, error } = await consulta(
+        `${base}, tracking:deal_tracking_status(*), avisos:deal_tracking_notice(codigo, status, canal, erro, enviado_em, criado_em)`,
+      );
       if (!error) return (data ?? []) as unknown as Deal[];
       // Rastreio é extra: se o cache falhar, o funil carrega sem ele.
       console.error("[funil] rastreio indisponível", error.message);

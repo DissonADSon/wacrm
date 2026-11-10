@@ -348,6 +348,16 @@ export interface Deal {
   stage?: PipelineStage;
   assignee?: Profile;
   tracking?: DealTrackingStatus | null;
+  avisos?: DealTrackingNotice[] | null;
+}
+
+export interface DealTrackingNotice {
+  codigo: string;
+  status: 'enviando' | 'enviado' | 'falhou' | 'legado';
+  canal: string | null;
+  erro: string | null;
+  enviado_em: string | null;
+  criado_em: string;
 }
 
 export interface DealTrackingStatus {
