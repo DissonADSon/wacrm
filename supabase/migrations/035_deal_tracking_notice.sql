@@ -63,7 +63,7 @@ JOIN deal_custom_fields f ON f.id = v.deal_custom_field_id AND f.field_name ILIK
 JOIN deals d ON d.id = v.deal_id
 CROSS JOIN LATERAL (
   SELECT upper(regexp_replace(coalesce(v.value, ''),
-    '[\s   -     　﻿]+', '', 'g')) AS codigo
+    '[\s\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+', '', 'g')) AS codigo
 ) n
 WHERE n.codigo ~ '^[A-Z]{2}[0-9]{9}[A-Z]{2}$'
 ON CONFLICT DO NOTHING;
