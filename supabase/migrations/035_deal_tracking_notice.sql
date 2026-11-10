@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS deal_tracking_notice (
   deal_id UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
   codigo TEXT NOT NULL,
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  -- enviando | enviado | falhou | legado (código que já existia antes do aviso)
+  -- enviando | enviado | falhou | incerto (WhatsApp chamado sem confirmação) | legado (já existia)
   status TEXT NOT NULL,
   canal TEXT,
   message_id TEXT,
@@ -47,6 +47,11 @@ ALTER TABLE deal_tracking_notice_config ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS deal_tracking_notice_config_select ON deal_tracking_notice_config;
 CREATE POLICY deal_tracking_notice_config_select ON deal_tracking_notice_config FOR SELECT
   USING (is_account_member(account_id));
+
+-- Johari pediu o aviso (chamado JOH-20261110-1530-AVR). Em outro ambiente é no-op.
+INSERT INTO deal_tracking_notice_config (account_id, ativo)
+SELECT id, TRUE FROM accounts WHERE id = '7aa2b826-d7c9-4760-8b06-54817778d775'
+ON CONFLICT (account_id) DO NOTHING;
 
 -- Códigos que já estavam nos cards não disparam aviso retroativo.
 -- Mesma normalização de normalizarCodigo() (src/lib/correios/rastro.ts):

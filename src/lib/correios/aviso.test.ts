@@ -103,6 +103,9 @@ describe("nova tentativa", () => {
     expect(respostaIncerta(new Error("read ECONNRESET"))).toBe(true);
     expect(respostaIncerta(new Error("(#131030) Recipient phone number not in allowed list"))).toBe(false);
     expect(respostaIncerta(new Error("Evolution API 400: bad number"))).toBe(false);
+    expect(respostaIncerta(new Error("Meta API error: 500"))).toBe(true);
+    expect(respostaIncerta(new Error("Meta API error: 429"))).toBe(true);
+    expect(respostaIncerta(new Error("Evolution API 503: down"))).toBe(true);
   });
 
   it("enviado e legado nunca retentam", () => {

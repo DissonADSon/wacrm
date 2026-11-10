@@ -48,7 +48,7 @@ export interface ValorAviso {
 export interface AvisoSalvo {
   deal_id: string;
   codigo: string;
-  status: "enviando" | "enviado" | "falhou" | "legado";
+  status: "enviando" | "enviado" | "falhou" | "incerto" | "legado";
   tentativas: number;
   tentado_em: string | null;
   chamado_em: string | null;
@@ -72,11 +72,10 @@ class FalhaDefinitiva extends Error {}
 export function respostaIncerta(e: unknown): boolean {
   if (!(e instanceof Error)) return false;
   if (["TypeError", "AbortError", "TimeoutError"].includes(e.name)) return true;
-  return /fetch failed|ECONN|ETIMEDOUT|socket|network/i.test(e.message);
+  return /fetch failed|ECONN|ETIMEDOUT|socket|network|API error: (429|5\d\d)|Evolution API (429|5\d\d)/i.test(e.message);
 }
 
-export const ERRO_INDEFINIDO =
-  "Envio interrompido sem confirmação: confira a conversa do cliente antes de mandar de novo";
+export const ERRO_INDEFINIDO = "Sem confirmação do WhatsApp: confira a conversa antes de mandar de novo";
 
 export function primeiroNome(nome: string | null | undefined): string {
   const n = (nome ?? "").trim().split(/\s+/)[0] ?? "";
@@ -215,6 +214,7 @@ async function enviar(
   conversaId: string | null,
   loja: string,
   agora: number,
+  estado: { chamado: boolean },
 ): Promise<Envio> {
   const nome = primeiroNome(p.contato?.name);
   const texto = textoAviso(nome, p.codigo, loja);
@@ -229,6 +229,7 @@ async function enviar(
 
   // Daqui pra frente o WhatsApp pode receber: marca antes de chamar.
   await gravar(admin, p, { chamado_em: new Date().toISOString() });
+  estado.chamado = true;
   let ultimoErro: unknown = null;
   for (const v of phoneVariants(telefone)) {
     try {
@@ -264,6 +265,7 @@ async function gravar(admin: SupabaseClient, p: Pendente, campos: Record<string,
 /** Manda um aviso já reservado e grava o resultado. Falha vira status "falhou". */
 async function avisar(admin: SupabaseClient, p: Pendente, loja: string, agora: number): Promise<"enviado" | "falhou"> {
   let aceito = false;
+  const estado = { chamado: false };
   try {
     if (!p.contato?.phone) throw new FalhaDefinitiva("Card sem contato com telefone");
     const telefone = sanitizePhoneForMeta(p.contato.phone);
@@ -275,7 +277,7 @@ async function avisar(admin: SupabaseClient, p: Pendente, loja: string, agora: n
     });
     if (!cfg) throw new FalhaDefinitiva("Conta sem número de WhatsApp configurado");
 
-    const envio = await enviar(admin, cfg, p, telefone, conversa?.id ?? null, loja, agora);
+    const envio = await enviar(admin, cfg, p, telefone, conversa?.id ?? null, loja, agora, estado);
     aceito = true;
     const enviadoEm = new Date().toISOString();
     // Grava o wamid antes da mensagem: a falha que o webhook trouxer já acha o aviso.
@@ -318,12 +320,15 @@ async function avisar(admin: SupabaseClient, p: Pendente, loja: string, agora: n
     }
     return "enviado";
   } catch (e) {
-    // Aceita pelo WhatsApp (ou sem saber): nunca reenviar, o cliente pode já ter recebido.
+    // Depois que o WhatsApp foi chamado, nada é reenviado sozinho: a Cloud API
+    // não é idempotente e até um erro pode ter entregado. Só repete o que falhou
+    // antes da chamada (ou a falha que a Meta confirmar pelo webhook).
     // Falta dado no card: não adianta repetir até alguém corrigir o card.
-    const semRepetir = aceito || respostaIncerta(e) || e instanceof FalhaDefinitiva;
+    const incerto = aceito || (estado.chamado && respostaIncerta(e));
+    const semRepetir = estado.chamado || e instanceof FalhaDefinitiva;
     await gravar(admin, p, {
-      status: "falhou",
-      erro: aceito ? "Mensagem enviada, mas não registrada: confira a conversa do cliente" : respostaIncerta(e) ? ERRO_INDEFINIDO : erroCurto(e),
+      status: incerto ? "incerto" : "falhou",
+      erro: aceito ? "Mensagem enviada, mas não registrada no CRM" : incerto ? ERRO_INDEFINIDO : erroCurto(e),
       ...(semRepetir ? { tentativas: MAX_TENTATIVAS } : {}),
     });
     return "falhou";
@@ -341,9 +346,9 @@ async function encerrar(admin: SupabaseClient, p: Pendente): Promise<void> {
   let q = admin
     .from("deal_tracking_notice")
     .update({
-      status: "falhou",
+      status: r.chamado_em ? "incerto" : "falhou",
       tentativas: MAX_TENTATIVAS,
-      erro: r.chamado_em ? ERRO_INDEFINIDO : "Envio interrompido várias vezes: mande o código ao cliente pela conversa",
+      erro: r.chamado_em ? ERRO_INDEFINIDO : "Envio interrompido: mande o código ao cliente pela conversa",
     })
     .eq("deal_id", p.dealId)
     .eq("codigo", p.codigo)
@@ -453,7 +458,11 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
   const r = { ...vazio, erros: [] as string[] };
   for (const p of pendentes) {
     try {
-      if (p.retomar?.status === "enviando" && (p.retomar.chamado_em || p.retomar.tentativas >= MAX_TENTATIVAS)) {
+      const r0 = p.retomar;
+      if (
+        r0?.status === "enviando" &&
+        (r0.chamado_em || r0.tentativas >= MAX_TENTATIVAS || agora - Date.parse(r0.criado_em) > RECENTE_MS)
+      ) {
         await encerrar(admin, p);
         r.falhas++;
         continue;

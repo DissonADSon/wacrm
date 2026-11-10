@@ -140,12 +140,16 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         <div
           title={aviso.erro ?? `Código ${aviso.codigo}${aviso.canal ? ` · ${aviso.canal}` : ""}`}
           className={`mt-1.5 flex items-start gap-1.5 text-[11px] leading-snug ${
-            aviso.status === "falhou" && !vaiTentarDeNovo(aviso) ? "text-red-400" : "text-muted-foreground"
+            aviso.status === "incerto"
+              ? "text-amber-500"
+              : aviso.status === "falhou" && !vaiTentarDeNovo(aviso)
+                ? "text-red-400"
+                : "text-muted-foreground"
           }`}
         >
           {aviso.status === "enviado" ? (
             <MessageCircleCheck className="mt-px h-3.5 w-3.5 shrink-0" />
-          ) : aviso.status === "falhou" && !vaiTentarDeNovo(aviso) ? (
+          ) : aviso.status === "incerto" || (aviso.status === "falhou" && !vaiTentarDeNovo(aviso)) ? (
             <CircleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
           ) : (
             <Clock className="mt-px h-3.5 w-3.5 shrink-0" />
@@ -153,7 +157,9 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           <span className="min-w-0 break-words">
             {aviso.status === "enviado"
               ? `Rastreio enviado ao cliente${aviso.enviado_em ? ` · ${formatHora(aviso.enviado_em)}` : ""}`
-              : vaiTentarDeNovo(aviso)
+              : aviso.status === "incerto"
+                ? "Rastreio pode ter saído para o cliente: confira a conversa antes de mandar de novo"
+                : vaiTentarDeNovo(aviso)
                 ? `Rastreio ao cliente: tentando de novo (${aviso.tentativas + 1} de ${MAX_TENTATIVAS_AVISO})`
                 : aviso.status === "falhou"
                   ? `Rastreio não enviado ao cliente: ${aviso.erro ?? "erro desconhecido"}`

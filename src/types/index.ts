@@ -353,7 +353,7 @@ export interface Deal {
 
 export interface DealTrackingNotice {
   codigo: string;
-  status: 'enviando' | 'enviado' | 'falhou' | 'legado';
+  status: 'enviando' | 'enviado' | 'falhou' | 'incerto' | 'legado';
   canal: string | null;
   erro: string | null;
   tentativas: number;
