@@ -15,6 +15,7 @@ interface ValorCampo {
 
 interface StatusSalvo {
   deal_id: string;
+  account_id: string;
   codigo: string;
   entregue: boolean;
   consultado_em: string;
@@ -68,9 +69,6 @@ export async function emLotes(ids: string[], fn: (lote: string[]) => PromiseLike
   }
 }
 
-// PostgREST: lista para `in`/`not.in` entre parênteses, UUIDs sem aspas.
-const listaPg = (ids: string[]) => `(${ids.join(",")})`;
-
 /**
  * Lê o campo personalizado de rastreio dos cards das contas do filtro,
  * consulta nos Correios só o que ainda não foi entregue e não foi
@@ -86,13 +84,15 @@ export async function sincronizarRastreios(
 
   let qCampos = admin
     .from("deal_custom_fields")
-    .select("id")
+    .select("id, account_id")
     .ilike("field_name", "%rastre%")
     .order("created_at");
   if (filtro.incluir) qCampos = qCampos.in("account_id", filtro.incluir);
-  if (filtro.excluir?.length) qCampos = qCampos.not("account_id", "in", listaPg(filtro.excluir));
-  const { data: campos, error: errCampos } = await qCampos;
+  const { data: camposTodos, error: errCampos } = await qCampos;
   if (errCampos) throw new Error(errCampos.message);
+  // `excluir` pode ter muitas contas: filtra em memória para não estourar a URL.
+  const excluidas = new Set(filtro.excluir ?? []);
+  const campos = (camposTodos ?? []).filter((c) => !excluidas.has(c.account_id as string));
   if (!campos?.length) return vazio;
 
   const ids = campos.map((c) => c.id as string);
@@ -108,11 +108,11 @@ export async function sincronizarRastreios(
   const salvos = await todas<StatusSalvo>((de, ate) => {
     let q = admin
       .from("deal_tracking_status")
-      .select("deal_id, codigo, entregue, consultado_em", { count: "exact" });
+      .select("deal_id, account_id, codigo, entregue, consultado_em", { count: "exact" });
     if (filtro.incluir) q = q.in("account_id", filtro.incluir);
-    if (filtro.excluir?.length) q = q.not("account_id", "in", listaPg(filtro.excluir));
     return q.order("deal_id").range(de, ate).returns<StatusSalvo[]>();
   });
+  salvos.linhas = salvos.linhas.filter((s) => !excluidas.has(s.account_id));
   const salvoPorDeal = new Map(salvos.linhas.map((s) => [s.deal_id, s]));
 
   const atual = new Map<string, { codigo: string; account_id: string }>();

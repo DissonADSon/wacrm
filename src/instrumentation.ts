@@ -29,7 +29,7 @@ export async function register() {
           console.error("[rastreio] chave do painel não decifra (ENCRYPTION_KEY mudou?); contas:", ilegiveis.join(","));
         }
 
-        const tarefas: { rotulo: string; chave: string; expiraEm: string; filtro: { incluir?: string[]; excluir?: string[] } }[] = [];
+        const tarefas: { rotulo: string; chave: string; expiraEm: string | null; filtro: { incluir?: string[]; excluir?: string[] } }[] = [];
         for (const [conta, c] of porConta) {
           tarefas.push({ rotulo: `conta ${conta}`, chave: c.chave, expiraEm: c.expiraEm, filtro: { incluir: [conta] } });
         }
@@ -48,7 +48,7 @@ export async function register() {
         }
 
         for (const t of tarefas) {
-          if (diasAte(t.expiraEm) < 0) {
+          if (t.expiraEm && diasAte(t.expiraEm) < 0) {
             console.warn(`[rastreio] ${t.rotulo}: chave venceu em ${t.expiraEm}; pulando até renovarem em Configurações > Rastreio Correios`);
             continue;
           }

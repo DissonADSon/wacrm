@@ -18,11 +18,6 @@ export const DIAS_AVISO = 3;
 /** Validade máxima de uma chave no CWS. */
 export const VALIDADE_MAX_DIAS = 180;
 
-// Validade da chave que hoje mora no ambiente (criada no CWS em 09/11/2026
-// como "CRM Johari - Rastro"). Some de cena quando o admin salvar a
-// primeira chave pelo painel.
-const EXPIRA_EM_CHAVE_AMBIENTE_PADRAO = "2027-05-08";
-
 const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function hojeSaoPaulo(agora: Date): string {
@@ -52,9 +47,11 @@ export function dataValida(v: unknown): v is string {
   return dt.getUTCFullYear() === a && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
-function expiraEmAmbiente(): string {
+// Validade da chave do ambiente vem de CORREIOS_CHAVE_EXPIRA_EM; sem ela é
+// desconhecida (null): o agendador não pula a chave e a tela diz "sem data".
+function expiraEmAmbiente(): string | null {
   const v = process.env.CORREIOS_CHAVE_EXPIRA_EM;
-  return dataValida(v) ? v : EXPIRA_EM_CHAVE_AMBIENTE_PADRAO;
+  return dataValida(v) ? v : null;
 }
 
 interface LinhaConfig {
@@ -74,7 +71,7 @@ function tabelaAusente(e: { code?: string; message?: string } | null): boolean {
 
 export interface ChaveConta {
   chave: string;
-  expiraEm: string;
+  expiraEm: string | null;
 }
 
 export interface ChavesCarregadas {

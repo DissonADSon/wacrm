@@ -200,8 +200,8 @@ function PassoAPasso() {
               <strong>180 dias</strong>.
             </>,
             <>
-              Escolha <strong>&ldquo;APIs restritas por contrato&rdquo;</strong>, digite o número do contrato dos
-              Correios e ligue só a API <strong>SRO-Rastro</strong>.
+              Escolha <strong>&ldquo;APIs restritas por contrato&rdquo;</strong> e digite o número do contrato dos
+              Correios. As APIs do contrato aparecem todas; confira se a <strong>SRO-Rastro</strong> está na lista.
             </>,
             <>
               Clique em <strong>&ldquo;Criar nova chave&rdquo;</strong>. A chave aparece na tela: copie ela inteira.
