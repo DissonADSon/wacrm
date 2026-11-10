@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS deal_tracking_notice (
   erro TEXT,
   tentativas INT NOT NULL DEFAULT 0,
   tentado_em TIMESTAMPTZ,
+  -- Marcado ANTES de chamar o WhatsApp: se a rodada morrer depois disso,
+  -- não dá pra saber se a mensagem saiu, e o aviso não é reenviado.
+  chamado_em TIMESTAMPTZ,
   enviado_em TIMESTAMPTZ,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (deal_id, codigo)
@@ -32,6 +35,17 @@ CREATE INDEX IF NOT EXISTS idx_deal_tracking_notice_retentar ON deal_tracking_no
 ALTER TABLE deal_tracking_notice ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS deal_tracking_notice_select ON deal_tracking_notice;
 CREATE POLICY deal_tracking_notice_select ON deal_tracking_notice FOR SELECT
+  USING (is_account_member(account_id));
+
+-- Interruptor por conta: o aviso só roda onde alguém ligou (padrão desligado).
+CREATE TABLE IF NOT EXISTS deal_tracking_notice_config (
+  account_id UUID PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  ativo BOOLEAN NOT NULL DEFAULT FALSE,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE deal_tracking_notice_config ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS deal_tracking_notice_config_select ON deal_tracking_notice_config;
+CREATE POLICY deal_tracking_notice_config_select ON deal_tracking_notice_config FOR SELECT
   USING (is_account_member(account_id));
 
 -- Códigos que já estavam nos cards não disparam aviso retroativo.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deveRetomar, escolherPendentes, primeiroNome, textoAviso, type AvisoSalvo } from "./aviso";
+import { deveRetomar, escolherPendentes, primeiroNome, respostaIncerta, textoAviso, type AvisoSalvo } from "./aviso";
 
 const AGORA = Date.parse("2026-11-10T18:00:00Z");
 const deal = (id: string) => ({
@@ -19,7 +19,7 @@ const avisado = (deal: string, codigo: string, extra: Partial<AvisoSalvo> = {}) 
   new Map<string, AvisoSalvo>([
     [
       `${deal}|${codigo}`,
-      { deal_id: deal, codigo, status: "enviado", tentativas: 1, tentado_em: "2026-11-10T17:00:00Z", criado_em: "2026-11-10T17:00:00Z", ...extra },
+      { deal_id: deal, codigo, status: "enviado", tentativas: 1, tentado_em: "2026-11-10T17:00:00Z", chamado_em: null, criado_em: "2026-11-10T17:00:00Z", ...extra },
     ],
   ]);
 const ordem = new Map([
@@ -74,7 +74,7 @@ describe("escolherPendentes", () => {
 describe("nova tentativa", () => {
   const base = (x: Partial<AvisoSalvo>): AvisoSalvo => ({
     deal_id: "d1", codigo: "AB123456789BR", status: "falhou", tentativas: 1,
-    tentado_em: "2026-11-10T17:30:00Z", criado_em: "2026-11-10T17:30:00Z", ...x,
+    tentado_em: "2026-11-10T17:30:00Z", chamado_em: null, criado_em: "2026-11-10T17:30:00Z", ...x,
   });
 
   it("falha retenta depois da espera e para no limite", () => {
@@ -91,6 +91,18 @@ describe("nova tentativa", () => {
   it("enviando preso há mais de 15 min volta pra fila; recente não", () => {
     expect(deveRetomar(base({ status: "enviando", tentado_em: "2026-11-10T17:40:00Z" }), AGORA)).toBe(true);
     expect(deveRetomar(base({ status: "enviando", tentado_em: "2026-11-10T17:55:00Z" }), AGORA)).toBe(false);
+  });
+
+  it("enviando preso no limite ainda volta, para ser encerrado", () => {
+    expect(deveRetomar(base({ status: "enviando", tentativas: 3, tentado_em: "2026-11-10T17:00:00Z" }), AGORA)).toBe(true);
+  });
+
+  it("resposta perdida (rede/timeout) conta como incerta; recusa HTTP não", () => {
+    expect(respostaIncerta(new TypeError("fetch failed"))).toBe(true);
+    expect(respostaIncerta(Object.assign(new Error("x"), { name: "TimeoutError" }))).toBe(true);
+    expect(respostaIncerta(new Error("read ECONNRESET"))).toBe(true);
+    expect(respostaIncerta(new Error("(#131030) Recipient phone number not in allowed list"))).toBe(false);
+    expect(respostaIncerta(new Error("Evolution API 400: bad number"))).toBe(false);
   });
 
   it("enviado e legado nunca retentam", () => {

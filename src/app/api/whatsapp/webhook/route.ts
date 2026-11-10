@@ -367,7 +367,6 @@ export async function handleStatusUpdate(status: {
           : 'O WhatsApp não entregou a mensagem',
       })
       .eq('message_id', status.id)
-      .eq('status', 'enviado')
     if (avisoErr) console.error('Error updating tracking notice:', avisoErr)
   }
 

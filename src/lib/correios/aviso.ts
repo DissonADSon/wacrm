@@ -51,6 +51,7 @@ export interface AvisoSalvo {
   status: "enviando" | "enviado" | "falhou" | "legado";
   tentativas: number;
   tentado_em: string | null;
+  chamado_em: string | null;
   criado_em: string;
 }
 
@@ -66,6 +67,16 @@ export interface Pendente {
 
 /** Falha que não se resolve tentando de novo (falta dado no card). */
 class FalhaDefinitiva extends Error {}
+
+/** WhatsApp chamado e resposta perdida (rede/timeout): a mensagem pode ter saído. */
+export function respostaIncerta(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  if (["TypeError", "AbortError", "TimeoutError"].includes(e.name)) return true;
+  return /fetch failed|ECONN|ETIMEDOUT|socket|network/i.test(e.message);
+}
+
+export const ERRO_INDEFINIDO =
+  "Envio interrompido sem confirmação: confira a conversa do cliente antes de mandar de novo";
 
 export function primeiroNome(nome: string | null | undefined): string {
   const n = (nome ?? "").trim().split(/\s+/)[0] ?? "";
@@ -86,7 +97,8 @@ export function textoAviso(nome: string, codigo: string, loja: string): string {
 /** Aviso existente que deve ser tentado de novo agora. */
 export function deveRetomar(a: AvisoSalvo, agora: number): boolean {
   const tentado = a.tentado_em ? Date.parse(a.tentado_em) : Date.parse(a.criado_em);
-  if (a.status === "enviando") return agora - tentado > PRESO_MS && a.tentativas < MAX_TENTATIVAS;
+  // Preso: sempre volta, para ser reenviado ou encerrado (ver avisarNovosCodigos).
+  if (a.status === "enviando") return agora - tentado > PRESO_MS;
   if (a.status !== "falhou" || a.tentativas >= MAX_TENTATIVAS) return false;
   if (agora - Date.parse(a.criado_em) > RECENTE_MS) return false;
   return agora - tentado >= ESPERA_MS * Math.max(1, a.tentativas);
@@ -149,9 +161,12 @@ async function templateAprovado(admin: SupabaseClient, accountId: string): Promi
     .in("name", TEMPLATES_AVISO);
   if (error) throw new Error(error.message);
   const linhas = (data ?? []) as MessageTemplate[];
-  // Só serve template com exatamente {{1}} nome e {{2}} código.
+  // Só serve template só de corpo, com exatamente {{1}} nome e {{2}} código:
+  // header de mídia ou botão exigiriam valores que o aviso não tem.
   for (const nome of TEMPLATES_AVISO) {
-    const t = linhas.find((l) => l.name === nome && variaveis(l.body_text) === 2);
+    const t = linhas.find(
+      (l) => l.name === nome && variaveis(l.body_text) === 2 && !l.header_type && !(l.buttons?.length),
+    );
     if (t) return t;
   }
   return null;
@@ -212,6 +227,8 @@ async function enviar(
     if (!template) throw new Error("Fora da janela de 24h e sem template de rastreio aprovado pela Meta");
   }
 
+  // Daqui pra frente o WhatsApp pode receber: marca antes de chamar.
+  await gravar(admin, p, { chamado_em: new Date().toISOString() });
   let ultimoErro: unknown = null;
   for (const v of phoneVariants(telefone)) {
     try {
@@ -246,6 +263,7 @@ async function gravar(admin: SupabaseClient, p: Pendente, campos: Record<string,
 
 /** Manda um aviso já reservado e grava o resultado. Falha vira status "falhou". */
 async function avisar(admin: SupabaseClient, p: Pendente, loja: string, agora: number): Promise<"enviado" | "falhou"> {
+  let aceito = false;
   try {
     if (!p.contato?.phone) throw new FalhaDefinitiva("Card sem contato com telefone");
     const telefone = sanitizePhoneForMeta(p.contato.phone);
@@ -258,6 +276,7 @@ async function avisar(admin: SupabaseClient, p: Pendente, loja: string, agora: n
     if (!cfg) throw new FalhaDefinitiva("Conta sem número de WhatsApp configurado");
 
     const envio = await enviar(admin, cfg, p, telefone, conversa?.id ?? null, loja, agora);
+    aceito = true;
     const enviadoEm = new Date().toISOString();
     // Grava o wamid antes da mensagem: a falha que o webhook trouxer já acha o aviso.
     await gravar(admin, p, {
@@ -299,11 +318,13 @@ async function avisar(admin: SupabaseClient, p: Pendente, loja: string, agora: n
     }
     return "enviado";
   } catch (e) {
+    // Aceita pelo WhatsApp (ou sem saber): nunca reenviar, o cliente pode já ter recebido.
+    // Falta dado no card: não adianta repetir até alguém corrigir o card.
+    const semRepetir = aceito || respostaIncerta(e) || e instanceof FalhaDefinitiva;
     await gravar(admin, p, {
       status: "falhou",
-      erro: erroCurto(e),
-      // Falta dado no card: não adianta repetir até alguém corrigir o card.
-      ...(e instanceof FalhaDefinitiva ? { tentativas: MAX_TENTATIVAS } : {}),
+      erro: aceito ? "Mensagem enviada, mas não registrada: confira a conversa do cliente" : respostaIncerta(e) ? ERRO_INDEFINIDO : erroCurto(e),
+      ...(semRepetir ? { tentativas: MAX_TENTATIVAS } : {}),
     });
     return "falhou";
   }
@@ -314,6 +335,24 @@ async function avisar(admin: SupabaseClient, p: Pendente, loja: string, agora: n
  * Retomada: update condicionado ao estado lido. Nos dois casos, se
  * outra rodada chegou antes, não volta linha e o card é pulado.
  */
+/** Encerra um "enviando" preso que não pode ser reenviado com segurança. */
+async function encerrar(admin: SupabaseClient, p: Pendente): Promise<void> {
+  const r = p.retomar!;
+  let q = admin
+    .from("deal_tracking_notice")
+    .update({
+      status: "falhou",
+      tentativas: MAX_TENTATIVAS,
+      erro: r.chamado_em ? ERRO_INDEFINIDO : "Envio interrompido várias vezes: mande o código ao cliente pela conversa",
+    })
+    .eq("deal_id", p.dealId)
+    .eq("codigo", p.codigo)
+    .eq("status", "enviando");
+  q = r.tentado_em ? q.eq("tentado_em", r.tentado_em) : q.is("tentado_em", null);
+  const { error } = await q;
+  if (error) throw new Error(error.message);
+}
+
 async function reservar(admin: SupabaseClient, p: Pendente, agora: number): Promise<boolean> {
   const agoraIso = new Date(agora).toISOString();
   if (!p.retomar) {
@@ -330,7 +369,7 @@ async function reservar(admin: SupabaseClient, p: Pendente, agora: number): Prom
   const r = p.retomar;
   let q = admin
     .from("deal_tracking_notice")
-    .update({ status: "enviando", tentativas: r.tentativas + 1, tentado_em: agoraIso, erro: null })
+    .update({ status: "enviando", tentativas: r.tentativas + 1, tentado_em: agoraIso, chamado_em: null, erro: null })
     .eq("deal_id", p.dealId)
     .eq("codigo", p.codigo)
     .eq("status", r.status)
@@ -358,6 +397,13 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
   );
   const vazio = { novos: 0, retomados: 0, enviados: 0, falhas: 0, erros: [] as string[] };
   if (!campos.linhas.length) return vazio;
+  const { data: ligadas, error: errLigadas } = await admin
+    .from("deal_tracking_notice_config")
+    .select("account_id")
+    .eq("ativo", true);
+  if (errLigadas) throw new Error(errLigadas.message);
+  const ativas = new Set((ligadas ?? []).map((c) => c.account_id as string));
+  if (!ativas.size) return vazio;
   const ids = campos.linhas.map((c) => c.id);
   const ordemCampo = new Map(ids.map((id, i) => [id, i]));
 
@@ -382,7 +428,7 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
   const avisos = await todas<AvisoSalvo>((de, ate) =>
     admin
       .from("deal_tracking_notice")
-      .select("deal_id, codigo, status, tentativas, tentado_em, criado_em", { count: "exact" })
+      .select("deal_id, codigo, status, tentativas, tentado_em, chamado_em, criado_em", { count: "exact" })
       .order("deal_id")
       .order("codigo")
       .range(de, ate)
@@ -392,7 +438,12 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
   if (!avisos.completa) throw new Error(`leitura incompleta dos avisos (${avisos.linhas.length})`);
   const porChave = new Map(avisos.linhas.map((a) => [`${a.deal_id}|${a.codigo}`, a]));
 
-  const pendentes = escolherPendentes(valores.linhas, ordemCampo, porChave, agora);
+  const pendentes = escolherPendentes(
+    valores.linhas.filter((v) => v.deal && ativas.has(v.deal.account_id)),
+    ordemCampo,
+    porChave,
+    agora,
+  );
   if (!pendentes.length) return vazio;
 
   const contas = [...new Set(pendentes.map((p) => p.accountId))];
@@ -402,6 +453,11 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
   const r = { ...vazio, erros: [] as string[] };
   for (const p of pendentes) {
     try {
+      if (p.retomar?.status === "enviando" && (p.retomar.chamado_em || p.retomar.tentativas >= MAX_TENTATIVAS)) {
+        await encerrar(admin, p);
+        r.falhas++;
+        continue;
+      }
       if (!(await reservar(admin, p, agora))) continue;
       if (p.retomar) r.retomados++;
       else r.novos++;

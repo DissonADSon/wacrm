@@ -356,6 +356,7 @@ export interface DealTrackingNotice {
   status: 'enviando' | 'enviado' | 'falhou' | 'legado';
   canal: string | null;
   erro: string | null;
+  tentativas: number;
   enviado_em: string | null;
   criado_em: string;
 }

@@ -29,6 +29,14 @@ function formatHora(iso: string) {
   });
 }
 
+// Espelha MAX_TENTATIVAS e RECENTE_MS de src/lib/correios/aviso.ts.
+const MAX_TENTATIVAS_AVISO = 3;
+const RETENTA_ATE_MS = 24 * 60 * 60 * 1000;
+
+function vaiTentarDeNovo(a: NonNullable<Deal["avisos"]>[number]) {
+  return a.status === "falhou" && a.tentativas < MAX_TENTATIVAS_AVISO && Date.now() - Date.parse(a.criado_em) < RETENTA_ATE_MS;
+}
+
 function avisoAtual(deal: Deal) {
   const lista = (deal.avisos ?? []).filter((a) => a.status !== "legado");
   if (!lista.length) return null;
@@ -132,12 +140,12 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         <div
           title={aviso.erro ?? `Código ${aviso.codigo}${aviso.canal ? ` · ${aviso.canal}` : ""}`}
           className={`mt-1.5 flex items-start gap-1.5 text-[11px] leading-snug ${
-            aviso.status === "falhou" ? "text-red-400" : "text-muted-foreground"
+            aviso.status === "falhou" && !vaiTentarDeNovo(aviso) ? "text-red-400" : "text-muted-foreground"
           }`}
         >
           {aviso.status === "enviado" ? (
             <MessageCircleCheck className="mt-px h-3.5 w-3.5 shrink-0" />
-          ) : aviso.status === "falhou" ? (
+          ) : aviso.status === "falhou" && !vaiTentarDeNovo(aviso) ? (
             <CircleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
           ) : (
             <Clock className="mt-px h-3.5 w-3.5 shrink-0" />
@@ -145,9 +153,11 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           <span className="min-w-0 break-words">
             {aviso.status === "enviado"
               ? `Rastreio enviado ao cliente${aviso.enviado_em ? ` · ${formatHora(aviso.enviado_em)}` : ""}`
-              : aviso.status === "falhou"
-                ? `Rastreio não enviado ao cliente: ${aviso.erro ?? "erro desconhecido"}`
-                : "Enviando rastreio ao cliente…"}
+              : vaiTentarDeNovo(aviso)
+                ? `Rastreio ao cliente: tentando de novo (${aviso.tentativas + 1} de ${MAX_TENTATIVAS_AVISO})`
+                : aviso.status === "falhou"
+                  ? `Rastreio não enviado ao cliente: ${aviso.erro ?? "erro desconhecido"}`
+                  : "Enviando rastreio ao cliente…"}
           </span>
         </div>
       )}
