@@ -24,9 +24,17 @@ describe("chave: prazos", () => {
 
 describe("chave do ambiente: validade", () => {
   afterEach(() => vi.unstubAllEnvs());
-  const adminSemPainel = {
-    from: () => ({ select: () => ({ returns: async () => ({ data: [], error: null }) }) }),
-  } as never;
+  const adminCom = (paginas: unknown[][], total: number) => {
+    let i = 0;
+    const q = {
+      select: () => q,
+      order: () => q,
+      range: () => q,
+      returns: async () => ({ data: paginas[i++] ?? [], error: null, count: total }),
+    };
+    return { from: () => q } as never;
+  };
+  const adminSemPainel = adminCom([[]], 0);
 
   it("sem CORREIOS_CHAVE_EXPIRA_EM a validade é desconhecida (null), não inventada", async () => {
     vi.stubEnv("CORREIOS_CHAVE_ACESSO", "x");
@@ -45,6 +53,20 @@ describe("chave do ambiente: validade", () => {
     vi.stubEnv("CORREIOS_CHAVE_ACESSO", "x");
     vi.stubEnv("CORREIOS_CHAVE_EXPIRA_EM", "2027-05-08");
     expect((await carregarChaves(adminSemPainel)).ambiente?.expiraEm).toBe("2027-05-08");
+  });
+
+  it("leitura de chaves cortada aborta em vez de cair na chave do ambiente", async () => {
+    vi.stubEnv("CORREIOS_CHAVE_ACESSO", "x");
+    await expect(carregarChaves(adminCom([[]], 1500))).rejects.toThrow(/incompleta/);
+  });
+
+  it("aviso em log quando a data vem no formato errado", async () => {
+    vi.stubEnv("CORREIOS_CHAVE_ACESSO", "x");
+    vi.stubEnv("CORREIOS_CHAVE_EXPIRA_EM", "08/05/2027");
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await carregarChaves(adminSemPainel);
+    expect(aviso).toHaveBeenCalledWith(expect.stringContaining("CORREIOS_CHAVE_EXPIRA_EM inválida"));
+    aviso.mockRestore();
   });
 });
 

@@ -96,15 +96,22 @@ export async function sincronizarRastreios(
   if (!campos?.length) return vazio;
 
   const ids = campos.map((c) => c.id as string);
-  const valores = await todas<ValorCampo>((de, ate) =>
-    admin
-      .from("deal_custom_values")
-      .select("deal_id, deal_custom_field_id, value, deal:deals(account_id)", { count: "exact" })
-      .in("deal_custom_field_id", ids)
-      .order("id")
-      .range(de, ate)
-      .returns<ValorCampo[]>(),
-  );
+  // Um campo por conta: com muitas contas a lista de ids também vai em lotes.
+  const valores: Leitura<ValorCampo> = { linhas: [], completa: true };
+  for (let i = 0; i < ids.length; i += LOTE_IDS) {
+    const lote = ids.slice(i, i + LOTE_IDS);
+    const parte = await todas<ValorCampo>((de, ate) =>
+      admin
+        .from("deal_custom_values")
+        .select("deal_id, deal_custom_field_id, value, deal:deals(account_id)", { count: "exact" })
+        .in("deal_custom_field_id", lote)
+        .order("id")
+        .range(de, ate)
+        .returns<ValorCampo[]>(),
+    );
+    valores.linhas.push(...parte.linhas);
+    valores.completa &&= parte.completa;
+  }
   const salvos = await todas<StatusSalvo>((de, ate) => {
     let q = admin
       .from("deal_tracking_status")
@@ -139,7 +146,7 @@ export async function sincronizarRastreios(
     }
   } else {
     falhas.push(
-      `leitura incompleta (valores ${valores.linhas.length}${valores.completa ? "" : "?"}, salvos ${salvos.linhas.length}${salvos.completa ? "" : "?"}): limpeza pulada`,
+      `leitura incompleta (campos ${camposLidos.linhas.length}${camposLidos.completa ? "" : "?"}, valores ${valores.linhas.length}${valores.completa ? "" : "?"}, salvos ${salvos.linhas.length}${salvos.completa ? "" : "?"}): limpeza pulada`,
     );
   }
 

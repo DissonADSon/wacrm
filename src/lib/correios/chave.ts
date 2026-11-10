@@ -89,12 +89,27 @@ export interface ChavesCarregadas {
 export async function carregarChaves(admin: SupabaseClient): Promise<ChavesCarregadas> {
   const porConta = new Map<string, ChaveConta>();
   const ilegiveis: string[] = [];
-  const { data, error } = await admin
-    .from("correios_config")
-    .select("account_id, chave_cifrada, expira_em")
-    .returns<Pick<LinhaConfig, "account_id" | "chave_cifrada" | "expira_em">[]>();
-  if (error && !tabelaAusente(error)) throw new Error(`correios_config: ${error.message}`);
-  for (const l of data ?? []) {
+  type Linha = Pick<LinhaConfig, "account_id" | "chave_cifrada" | "expira_em">;
+  // Paginado pelo total: uma leitura cortada deixaria contas com chave própria
+  // caírem na chave do ambiente. Leitura incompleta aborta a rodada.
+  const data: Linha[] = [];
+  for (;;) {
+    const { data: parte, error, count } = await admin
+      .from("correios_config")
+      .select("account_id, chave_cifrada, expira_em", { count: "exact" })
+      .order("account_id")
+      .range(data.length, data.length + 999)
+      .returns<Linha[]>();
+    if (error) {
+      if (tabelaAusente(error)) break;
+      throw new Error(`correios_config: ${error.message}`);
+    }
+    data.push(...(parte ?? []));
+    if (count == null) throw new Error("correios_config: sem contagem, leitura abortada");
+    if (data.length >= count) break;
+    if (!parte?.length) throw new Error(`correios_config: leitura incompleta (${data.length} de ${count})`);
+  }
+  for (const l of data) {
     try {
       porConta.set(l.account_id, { chave: decrypt(l.chave_cifrada), expiraEm: l.expira_em });
     } catch {

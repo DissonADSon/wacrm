@@ -175,4 +175,14 @@ describe("sincronizarRastreios", () => {
       expect(c.url.length).toBeLessThan(5000);
     }
   });
+
+  it("muitas contas: ids de campo vão em lotes, sem URL gigante", async () => {
+    const campos = Array.from({ length: 250 }, (_, i) => ({ id: uuid(5000 + i), account_id: uuid(6000 + i) }));
+    const { admin, chamadas } = supabaseFalso({ valores: [], salvos: [], campos });
+    await sincronizarRastreios(admin, CHAVE);
+    const leituras = chamadas.filter((c) => c.url.includes("deal_custom_values"));
+    expect(leituras).toHaveLength(3);
+    for (const c of leituras) expect(c.url.length).toBeLessThan(5000);
+  });
 });
+
