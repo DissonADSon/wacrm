@@ -52,7 +52,7 @@ export function dataValida(v: unknown): v is string {
 function expiraEmAmbiente(): string | null {
   const v = process.env.CORREIOS_CHAVE_EXPIRA_EM;
   if (dataValida(v)) return v;
-  if (v) console.warn(`[rastreio] CORREIOS_CHAVE_EXPIRA_EM inválida ("${v}"); use AAAA-MM-DD`);
+  if (v) console.warn("[rastreio] CORREIOS_CHAVE_EXPIRA_EM inválida; use AAAA-MM-DD");
   return null;
 }
 
@@ -66,9 +66,11 @@ interface LinhaConfig {
   atualizado_em: string;
 }
 
-// 42P01 = tabela não existe (migration 034 ainda não aplicada).
-function tabelaAusente(e: { code?: string; message?: string } | null): boolean {
-  return !!e && (e.code === "42P01" || e.code === "PGRST205" || /correios_config/.test(e.message ?? ""));
+// Só "tabela não existe" (migration 034 ainda não aplicada). Permissão,
+// timeout etc. não entram: tratá-los como ausência mandaria contas com chave
+// própria para a chave do ambiente.
+function tabelaAusente(e: { code?: string } | null): boolean {
+  return !!e && (e.code === "42P01" || e.code === "PGRST205");
 }
 
 export interface ChaveConta {

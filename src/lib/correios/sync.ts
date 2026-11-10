@@ -81,6 +81,19 @@ export async function sincronizarRastreios(
 ) {
   const vazio = { consultados: 0, gravados: 0, soErro: 0, removidos: 0, falhas: [] as string[] };
   if (filtro.incluir && !filtro.incluir.length) return vazio;
+  if (filtro.incluir && filtro.incluir.length > LOTE_IDS) {
+    // `incluir` vai na URL: muitas contas rodam em lotes e os totais somam.
+    const total = { ...vazio, falhas: [] as string[] };
+    for (let i = 0; i < filtro.incluir.length; i += LOTE_IDS) {
+      const r = await sincronizarRastreios(admin, chave, { incluir: filtro.incluir.slice(i, i + LOTE_IDS) });
+      total.consultados += r.consultados;
+      total.gravados += r.gravados;
+      total.soErro += r.soErro;
+      total.removidos += r.removidos;
+      total.falhas.push(...r.falhas);
+    }
+    return total;
+  }
 
   const camposLidos = await todas<{ id: string; account_id: string }>((de, ate) => {
     let q = admin

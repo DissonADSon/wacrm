@@ -24,13 +24,13 @@ describe("chave: prazos", () => {
 
 describe("chave do ambiente: validade", () => {
   afterEach(() => vi.unstubAllEnvs());
-  const adminCom = (paginas: unknown[][], total: number) => {
+  const adminCom = (paginas: unknown[][], total: number, erro: { code: string; message: string } | null = null) => {
     let i = 0;
     const q = {
       select: () => q,
       order: () => q,
       range: () => q,
-      returns: async () => ({ data: paginas[i++] ?? [], error: null, count: total }),
+      returns: async () => (erro ? { data: null, error: erro, count: null } : { data: paginas[i++] ?? [], error: null, count: total }),
     };
     return { from: () => q } as never;
   };
@@ -67,6 +67,18 @@ describe("chave do ambiente: validade", () => {
     await carregarChaves(adminSemPainel);
     expect(aviso).toHaveBeenCalledWith(expect.stringContaining("CORREIOS_CHAVE_EXPIRA_EM inválida"));
     aviso.mockRestore();
+  });
+
+  it("erro de permissão ou timeout aborta; só tabela ausente cai no ambiente", async () => {
+    vi.stubEnv("CORREIOS_CHAVE_ACESSO", "x");
+    await expect(
+      carregarChaves(adminCom([], 0, { code: "42501", message: "permission denied for table correios_config" })),
+    ).rejects.toThrow(/permission/);
+    await expect(
+      carregarChaves(adminCom([], 0, { code: "57014", message: 'statement timeout on relation "correios_config"' })),
+    ).rejects.toThrow(/timeout/);
+    const r = await carregarChaves(adminCom([], 0, { code: "42P01", message: 'relation "correios_config" does not exist' }));
+    expect(r.ambiente).not.toBeNull();
   });
 });
 

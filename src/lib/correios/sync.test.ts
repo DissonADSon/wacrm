@@ -184,5 +184,14 @@ describe("sincronizarRastreios", () => {
     expect(leituras).toHaveLength(3);
     for (const c of leituras) expect(c.url.length).toBeLessThan(5000);
   });
+
+  it("incluir com muitas contas roda em lotes, sem URL gigante", async () => {
+    const incluir = Array.from({ length: 250 }, (_, i) => uuid(7000 + i));
+    const { admin, chamadas } = supabaseFalso({ valores: [], salvos: [] });
+    await sincronizarRastreios(admin, CHAVE, { incluir });
+    const campos = chamadas.filter((c) => c.url.includes("deal_custom_fields"));
+    expect(campos).toHaveLength(3);
+    for (const c of chamadas) expect(c.url.length).toBeLessThan(5000);
+  });
 });
 
