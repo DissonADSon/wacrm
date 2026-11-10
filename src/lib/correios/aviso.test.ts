@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deveRetomar, escolherPendentes, primeiroNome, respostaIncerta, textoAviso, type AvisoSalvo } from "./aviso";
+import { deveRetomar, escolherPendentes, primeiroNome, rejeicaoExplicita, respostaIncerta, textoAviso, type AvisoSalvo } from "./aviso";
 
 const AGORA = Date.parse("2026-11-10T18:00:00Z");
 const deal = (id: string) => ({
@@ -106,6 +106,18 @@ describe("nova tentativa", () => {
     expect(respostaIncerta(new Error("Meta API error: 500"))).toBe(true);
     expect(respostaIncerta(new Error("Meta API error: 429"))).toBe(true);
     expect(respostaIncerta(new Error("Evolution API 503: down"))).toBe(true);
+  });
+
+  it("só recusa com código conhecido conta como 'não saiu'; erro genérico é incerto", () => {
+    expect(rejeicaoExplicita(new Error("(#132000) Number of parameters does not match"))).toBe(true);
+    expect(rejeicaoExplicita(new Error("(#131026) Message undeliverable"))).toBe(true);
+    expect(rejeicaoExplicita(new Error("(#100) Invalid parameter"))).toBe(true);
+    expect(rejeicaoExplicita(new Error("Evolution API 400: bad number"))).toBe(true);
+    expect(rejeicaoExplicita(new Error("An unknown error occurred"))).toBe(false);
+    expect(rejeicaoExplicita(new Error("(#1) An unexpected error has occurred"))).toBe(false);
+    expect(rejeicaoExplicita(new Error("Service temporarily unavailable"))).toBe(false);
+    expect(rejeicaoExplicita(new Error("Evolution API 429: slow down"))).toBe(false);
+    expect(rejeicaoExplicita(new Error("Meta API error: 500"))).toBe(false);
   });
 
   it("enviado e legado nunca retentam", () => {

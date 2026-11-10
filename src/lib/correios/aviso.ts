@@ -75,6 +75,21 @@ export function respostaIncerta(e: unknown): boolean {
   return /fetch failed|ECONN|ETIMEDOUT|socket|network|API error: (429|5\d\d)|Evolution API (429|5\d\d)/i.test(e.message);
 }
 
+/**
+ * Recusa explícita do WhatsApp: a mensagem com certeza NÃO saiu. Códigos
+ * da Meta no formato "(#NNN)" de parâmetro, destinatário, template e
+ * política (100, 131xxx, 132xxx, 133xxx, 135xxx, 368, 470) e 4xx do
+ * Evolution (fora 429). Qualquer outra coisa depois da chamada é incerta.
+ */
+export function rejeicaoExplicita(e: unknown): boolean {
+  if (!(e instanceof Error) || respostaIncerta(e)) return false;
+  return (
+    /\(#(100|368|470|13[1235]\d{3})\)/.test(e.message) ||
+    /Evolution API 4(?!29)\d\d/.test(e.message) ||
+    isRecipientNotAllowedError(e.message)
+  );
+}
+
 export const ERRO_INDEFINIDO = "Sem confirmação do WhatsApp: confira a conversa antes de mandar de novo";
 
 export function primeiroNome(nome: string | null | undefined): string {
@@ -324,7 +339,7 @@ async function avisar(admin: SupabaseClient, p: Pendente, loja: string, agora: n
     // não é idempotente e até um erro pode ter entregado. Só repete o que falhou
     // antes da chamada (ou a falha que a Meta confirmar pelo webhook).
     // Falta dado no card: não adianta repetir até alguém corrigir o card.
-    const incerto = aceito || (estado.chamado && respostaIncerta(e));
+    const incerto = aceito || (estado.chamado && !rejeicaoExplicita(e));
     const semRepetir = estado.chamado || e instanceof FalhaDefinitiva;
     await gravar(admin, p, {
       status: incerto ? "incerto" : "falhou",
