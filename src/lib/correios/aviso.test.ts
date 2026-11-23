@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deveRetomar, emLacuna, escolherLegados, escolherPendentes, primeiroNome, rejeicaoExplicita, respostaIncerta, textoAviso, type AvisoSalvo } from "./aviso";
+import { ERRO_LACUNA, deveRetomar, emLacuna, escolherLegados, escolherPendentes, primeiroNome, rejeicaoExplicita, respostaIncerta, textoAviso, type AvisoSalvo } from "./aviso";
 
 const AGORA = Date.parse("2026-11-10T18:00:00Z");
 const deal = (id: string) => ({
@@ -225,5 +225,15 @@ describe("lacuna (ciclo parado mais de 24 h)", () => {
   it("em lacuna não toca o que já tem registro", () => {
     const r = escolherLegados([v("d1", "f1", "AB123456789BR")], avisado("d1", "AB123456789BR"), AGORA, true);
     expect(r).toHaveLength(0);
+  });
+});
+
+describe("legado de lacuna visível no card", () => {
+  it("o prefixo que o card procura casa com o erro gravado em lacuna", async () => {
+    const fs = await import("node:fs");
+    const card = fs.readFileSync(new URL("../../components/pipelines/deal-card.tsx", import.meta.url), "utf8");
+    const prefixo = card.match(/startsWith\("([^"]+)"\)/)?.[1];
+    expect(prefixo).toBeTruthy();
+    expect(ERRO_LACUNA.startsWith(prefixo!)).toBe(true);
   });
 });

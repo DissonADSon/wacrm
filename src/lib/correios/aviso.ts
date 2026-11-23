@@ -191,6 +191,9 @@ export function escolherLegados(
   return out;
 }
 
+/** Prefixo do erro do legado gravado em lacuna; o card mostra esse caso à equipe. */
+export const ERRO_LACUNA = "Aviso automático estava parado: mande o código ao cliente pela conversa";
+
 /** Ciclo parado tempo demais (ou nunca registrado): entra no modo lacuna. */
 export function emLacuna(ultimoCicloEm: string | null | undefined, agora: number): boolean {
   if (!ultimoCicloEm) return true;
@@ -504,8 +507,11 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
     .eq("id", 1)
     .maybeSingle();
   if (errMarca) erros.push(`marca d'água: ${erroCurto(errMarca.message)}`);
-  // Sem conseguir ler a marca, assume o pior: lacuna.
-  const lacuna = errMarca ? true : emLacuna(marca?.ultimo_ciclo_em as string | null, agora);
+  // Marca ilegível (tabela ausente, cache de schema, permissão) não é lacuna de
+  // tempo: só a varredura normal (> 24 h) roda e nenhum aviso sai no ciclo.
+  // Tratar como lacuna gravaria legado permanente em código recém-colado.
+  const marcaIlegivel = !!errMarca;
+  const lacuna = !marcaIlegivel && emLacuna(marca?.ultimo_ciclo_em as string | null, agora);
 
   // Roda antes de qualquer outra saída (inclusive interruptor desligado e leitura
   // parcial): o insert não sobrescreve, então ler a menos não estraga nada.
@@ -519,7 +525,7 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
         candidatos.slice(i, i + 500).map((l) => ({
           ...l,
           status: "legado",
-          erro: lacuna ? "ciclo do aviso parado mais de 24 h: código não avisado" : "código parado há mais de 24 h sem aviso",
+          erro: lacuna ? ERRO_LACUNA : "código parado há mais de 24 h sem aviso",
         })),
         { onConflict: "deal_id,codigo", ignoreDuplicates: true },
       )
@@ -548,7 +554,7 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
   if (!valores.completa) erros.push("leitura incompleta dos valores de rastreio");
   // Só avança a marca quando tudo foi lido e varrido: senão o próximo ciclo
   // continua em lacuna e nenhum código sem registro avisa.
-  if (leiturasOk && varreduraOk) {
+  if (leiturasOk && varreduraOk && !marcaIlegivel) {
     const { error } = await admin
       .from("deal_tracking_notice_sweep")
       .upsert({ id: 1, ultimo_ciclo_em: new Date(agora).toISOString() }, { onConflict: "id" });
@@ -559,7 +565,7 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
   // Leitura parcial dos avisos = risco de tratar enviado como novo. Pula a rodada.
   if (!avisos.completa) throw new Error(`leitura incompleta dos avisos (${avisos.linhas.length})`);
   // Em lacuna, ou se a varredura falhou, nenhum código sem registro pode avisar.
-  if (!ativas.size || lacuna || !varreduraOk) return base;
+  if (!ativas.size || lacuna || !varreduraOk || marcaIlegivel) return base;
 
   const pendentes = escolherPendentes(
     valores.linhas.filter((v) => v.deal && ativas.has(v.deal.account_id)),

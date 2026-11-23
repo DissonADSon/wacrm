@@ -38,7 +38,11 @@ function vaiTentarDeNovo(a: NonNullable<Deal["avisos"]>[number]) {
 }
 
 function avisoAtual(deal: Deal) {
-  const lista = (deal.avisos ?? []).filter((a) => a.status !== "legado");
+  // Legado só aparece quando foi gravado com o aviso parado: aí o cliente não
+  // recebeu nada e a equipe precisa saber. Espelha ERRO_LACUNA de lib/correios/aviso.ts.
+  const lista = (deal.avisos ?? []).filter(
+    (a) => a.status !== "legado" || (a.erro ?? "").startsWith("Aviso automático estava parado"),
+  );
   if (!lista.length) return null;
   // O código mais recente do card é o que vale.
   return lista.reduce((a, b) => (a.criado_em >= b.criado_em ? a : b));
@@ -140,7 +144,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         <div
           title={aviso.erro ?? `Código ${aviso.codigo}${aviso.canal ? ` · ${aviso.canal}` : ""}`}
           className={`mt-1.5 flex items-start gap-1.5 text-[11px] leading-snug ${
-            aviso.status === "incerto"
+            aviso.status === "incerto" || aviso.status === "legado"
               ? "text-amber-500"
               : aviso.status === "falhou" && !vaiTentarDeNovo(aviso)
                 ? "text-red-400"
@@ -149,7 +153,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         >
           {aviso.status === "enviado" ? (
             <MessageCircleCheck className="mt-px h-3.5 w-3.5 shrink-0" />
-          ) : aviso.status === "incerto" || (aviso.status === "falhou" && !vaiTentarDeNovo(aviso)) ? (
+          ) : aviso.status === "incerto" || aviso.status === "legado" || (aviso.status === "falhou" && !vaiTentarDeNovo(aviso)) ? (
             <CircleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
           ) : (
             <Clock className="mt-px h-3.5 w-3.5 shrink-0" />
@@ -157,7 +161,9 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           <span className="min-w-0 break-words">
             {aviso.status === "enviado"
               ? `Rastreio enviado ao cliente${aviso.enviado_em ? ` · ${formatHora(aviso.enviado_em)}` : ""}`
-              : aviso.status === "incerto"
+              : aviso.status === "legado"
+                ? `Rastreio não enviado ao cliente: ${aviso.erro}`
+                : aviso.status === "incerto"
                 ? "Rastreio pode ter saído para o cliente: confira a conversa antes de mandar de novo"
                 : vaiTentarDeNovo(aviso)
                 ? `Rastreio ao cliente: tentando de novo (${aviso.tentativas + 1} de ${MAX_TENTATIVAS_AVISO})`
