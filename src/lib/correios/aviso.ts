@@ -132,13 +132,17 @@ export function escolherPendentes(
   const ordenados = [...valores].sort(
     (a, b) => (ordemCampo.get(a.deal_custom_field_id) ?? 0) - (ordemCampo.get(b.deal_custom_field_id) ?? 0),
   );
+  // Por (card, código): cada código de rastreio do card é avisado uma vez,
+  // inclusive o de um 2º campo quando o 1º já foi avisado ou é legado.
   const vistos = new Set<string>();
   const out: Pendente[] = [];
   for (const v of ordenados) {
-    if (vistos.has(v.deal_id) || !v.deal) continue;
+    if (!v.deal) continue;
     const codigo = normalizarCodigo(v.value);
     if (!codigo) continue;
-    vistos.add(v.deal_id);
+    const chave = `${v.deal_id}|${codigo}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
     const base = {
       dealId: v.deal_id,
       codigo,
@@ -146,7 +150,7 @@ export function escolherPendentes(
       userId: v.deal.user_id,
       contato: v.deal.contact,
     };
-    const salvo = avisos.get(`${v.deal_id}|${codigo}`);
+    const salvo = avisos.get(chave);
     if (salvo) {
       if (deveRetomar(salvo, agora)) out.push({ ...base, retomar: salvo });
       continue;
@@ -167,6 +171,7 @@ export function escolherLegados(
   valores: ValorAviso[],
   avisados: Map<string, unknown>,
   agora: number,
+  lacuna = false,
 ): { deal_id: string; codigo: string; account_id: string }[] {
   const vistos = new Set<string>();
   const out: { deal_id: string; codigo: string; account_id: string }[] = [];
@@ -176,12 +181,21 @@ export function escolherLegados(
     if (!codigo) continue;
     const chave = `${v.deal_id}|${codigo}`;
     if (avisados.has(chave) || vistos.has(chave)) continue;
+    // Lacuna (ciclo parado > 24 h): não dá para separar código antigo regravado
+    // de código novo, então nenhum sem registro avisa.
     const mexido = v.updated_at ? Date.parse(v.updated_at) : NaN;
-    if (agora - mexido <= RECENTE_MS) continue;
+    if (!lacuna && agora - mexido <= RECENTE_MS) continue;
     vistos.add(chave);
     out.push({ deal_id: v.deal_id, codigo, account_id: v.deal.account_id });
   }
   return out;
+}
+
+/** Ciclo parado tempo demais (ou nunca registrado): entra no modo lacuna. */
+export function emLacuna(ultimoCicloEm: string | null | undefined, agora: number): boolean {
+  if (!ultimoCicloEm) return true;
+  const t = Date.parse(ultimoCicloEm);
+  return Number.isNaN(t) || agora - t > RECENTE_MS;
 }
 
 function erroCurto(e: unknown): string {
@@ -442,7 +456,7 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
       .range(de, ate)
       .returns<{ id: string }[]>(),
   );
-  const vazio = { novos: 0, retomados: 0, enviados: 0, falhas: 0, legados: 0, erros: [] as string[] };
+  const vazio = { novos: 0, retomados: 0, enviados: 0, falhas: 0, legados: 0, lacuna: false, erros: [] as string[] };
   if (!campos.linhas.length) return vazio;
   const { data: ligadas, error: errLigadas } = await admin
     .from("deal_tracking_notice_config")
@@ -469,6 +483,7 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
         .returns<ValorAviso[]>(),
     );
     valores.linhas.push(...parte.linhas);
+    valores.completa &&= parte.completa;
   }
 
   const avisos = await todas<AvisoSalvo>((de, ate) =>
@@ -482,23 +497,69 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
   );
   const porChave = new Map(avisos.linhas.map((a) => [`${a.deal_id}|${a.codigo}`, a]));
 
+  const erros: string[] = [];
+  const { data: marca, error: errMarca } = await admin
+    .from("deal_tracking_notice_sweep")
+    .select("ultimo_ciclo_em")
+    .eq("id", 1)
+    .maybeSingle();
+  if (errMarca) erros.push(`marca d'água: ${erroCurto(errMarca.message)}`);
+  // Sem conseguir ler a marca, assume o pior: lacuna.
+  const lacuna = errMarca ? true : emLacuna(marca?.ultimo_ciclo_em as string | null, agora);
+
   // Roda antes de qualquer outra saída (inclusive interruptor desligado e leitura
   // parcial): o insert não sobrescreve, então ler a menos não estraga nada.
-  const legados = escolherLegados(valores.linhas, porChave, agora);
-  for (let i = 0; i < legados.length; i += 500) {
-    const { error } = await admin
+  const candidatos = escolherLegados(valores.linhas, porChave, agora, lacuna);
+  let legados = 0;
+  let varreduraOk = true;
+  for (let i = 0; i < candidatos.length; i += 500) {
+    const { data, error } = await admin
       .from("deal_tracking_notice")
       .upsert(
-        legados.slice(i, i + 500).map((l) => ({ ...l, status: "legado", erro: "código parado há mais de 24 h sem aviso" })),
+        candidatos.slice(i, i + 500).map((l) => ({
+          ...l,
+          status: "legado",
+          erro: lacuna ? "ciclo do aviso parado mais de 24 h: código não avisado" : "código parado há mais de 24 h sem aviso",
+        })),
         { onConflict: "deal_id,codigo", ignoreDuplicates: true },
-      );
-    if (error) throw new Error(error.message);
+      )
+      .select("deal_id");
+    if (error) {
+      varreduraOk = false;
+      erros.push(`varredura de legado: ${erroCurto(error.message)}`);
+      break;
+    }
+    legados += data?.length ?? 0;
   }
-  const base = { ...vazio, legados: legados.length };
+  const criadoEm = new Date(agora).toISOString();
+  for (const c of candidatos) {
+    porChave.set(`${c.deal_id}|${c.codigo}`, {
+      deal_id: c.deal_id,
+      codigo: c.codigo,
+      status: "legado",
+      tentativas: 0,
+      tentado_em: null,
+      chamado_em: null,
+      criado_em: criadoEm,
+    });
+  }
+
+  const leiturasOk = campos.completa && valores.completa && avisos.completa;
+  if (!valores.completa) erros.push("leitura incompleta dos valores de rastreio");
+  // Só avança a marca quando tudo foi lido e varrido: senão o próximo ciclo
+  // continua em lacuna e nenhum código sem registro avisa.
+  if (leiturasOk && varreduraOk) {
+    const { error } = await admin
+      .from("deal_tracking_notice_sweep")
+      .upsert({ id: 1, ultimo_ciclo_em: new Date(agora).toISOString() }, { onConflict: "id" });
+    if (error) erros.push(`marca d'água: ${erroCurto(error.message)}`);
+  }
+  const base = { ...vazio, legados, lacuna, erros };
 
   // Leitura parcial dos avisos = risco de tratar enviado como novo. Pula a rodada.
   if (!avisos.completa) throw new Error(`leitura incompleta dos avisos (${avisos.linhas.length})`);
-  if (!ativas.size) return base;
+  // Em lacuna, ou se a varredura falhou, nenhum código sem registro pode avisar.
+  if (!ativas.size || lacuna || !varreduraOk) return base;
 
   const pendentes = escolherPendentes(
     valores.linhas.filter((v) => v.deal && ativas.has(v.deal.account_id)),
@@ -512,7 +573,7 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
   const { data: nomes } = await admin.from("accounts").select("id, name").in("id", contas);
   const loja = new Map((nomes ?? []).map((a) => [a.id as string, (a.name as string) || "da loja"]));
 
-  const r = { ...base, erros: [] as string[] };
+  const r = { ...base, erros: [...erros] };
   for (const p of pendentes) {
     try {
       const r0 = p.retomar;

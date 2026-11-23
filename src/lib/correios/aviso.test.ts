@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deveRetomar, escolherLegados, escolherPendentes, primeiroNome, rejeicaoExplicita, respostaIncerta, textoAviso, type AvisoSalvo } from "./aviso";
+import { deveRetomar, emLacuna, escolherLegados, escolherPendentes, primeiroNome, rejeicaoExplicita, respostaIncerta, textoAviso, type AvisoSalvo } from "./aviso";
 
 const AGORA = Date.parse("2026-11-10T18:00:00Z");
 const deal = (id: string) => ({
@@ -60,14 +60,24 @@ describe("escolherPendentes", () => {
     expect(r).toHaveLength(0);
   });
 
-  it("dois campos no mesmo card: vale o primeiro campo, um aviso só", () => {
+  it("dois campos com códigos diferentes: um aviso por código; mesmo código repetido avisa uma vez", () => {
     const r = escolherPendentes(
-      [v("d1", "f2", "ZZ999999999BR"), v("d1", "f1", "AB123456789BR")],
+      [v("d1", "f2", "ZZ999999999BR"), v("d1", "f1", "AB123456789BR"), v("d1", "f2", "AB123456789BR")],
       ordem,
       new Map(),
       AGORA,
     );
-    expect(r.map((p) => p.codigo)).toEqual(["AB123456789BR"]);
+    expect(r.map((p) => p.codigo)).toEqual(["AB123456789BR", "ZZ999999999BR"]);
+  });
+
+  it("1º campo já legado não bloqueia o código novo do 2º campo", () => {
+    const r = escolherPendentes(
+      [v("d1", "f1", "AB123456789BR", "2026-11-01T00:00:00Z"), v("d1", "f2", "ZZ999999999BR")],
+      ordem,
+      avisado("d1", "AB123456789BR", { status: "legado", tentativas: 0, tentado_em: null }),
+      AGORA,
+    );
+    expect(r.map((p) => p.codigo)).toEqual(["ZZ999999999BR"]);
   });
 });
 
@@ -195,6 +205,25 @@ describe("varredura de legado", () => {
   it("depois de virar legado, salvar o card de novo não dispara aviso", () => {
     const salvo = avisado("d1", "AB123456789BR", { status: "legado", tentativas: 0, tentado_em: null });
     const r = escolherPendentes([v("d1", "f1", "AB123456789BR")], ordem, salvo, AGORA);
+    expect(r).toHaveLength(0);
+  });
+});
+
+describe("lacuna (ciclo parado mais de 24 h)", () => {
+  it("marca ausente, inválida ou com mais de 24 h entra em lacuna; recente não", () => {
+    expect(emLacuna(null, AGORA)).toBe(true);
+    expect(emLacuna("lixo", AGORA)).toBe(true);
+    expect(emLacuna("2026-11-07T18:00:00Z", AGORA)).toBe(true);
+    expect(emLacuna("2026-11-10T17:58:00Z", AGORA)).toBe(false);
+  });
+
+  it("em lacuna até o código recente sem registro vira legado (pode ser antigo regravado)", () => {
+    const r = escolherLegados([v("d1", "f1", "AB123456789BR"), v("d2", "f1", "CD123456789BR", "2026-11-01T00:00:00Z")], new Map(), AGORA, true);
+    expect(r.map((l) => l.codigo).sort()).toEqual(["AB123456789BR", "CD123456789BR"]);
+  });
+
+  it("em lacuna não toca o que já tem registro", () => {
+    const r = escolherLegados([v("d1", "f1", "AB123456789BR")], avisado("d1", "AB123456789BR"), AGORA, true);
     expect(r).toHaveLength(0);
   });
 });
