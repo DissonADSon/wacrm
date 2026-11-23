@@ -79,7 +79,7 @@ export async function register() {
         const { supabaseAdmin } = await import("@/lib/automations/admin-client");
         const { avisarNovosCodigos } = await import("@/lib/correios/aviso");
         const r = await avisarNovosCodigos(supabaseAdmin());
-        if (r.novos || r.retomados || r.erros.length) console.log("[aviso-rastreio]", JSON.stringify(r));
+        if (r.novos || r.retomados || r.legados || r.erros.length) console.log("[aviso-rastreio]", JSON.stringify(r));
       } catch (e) {
         console.error("[aviso-rastreio] falha", e instanceof Error ? e.message : e);
       } finally {

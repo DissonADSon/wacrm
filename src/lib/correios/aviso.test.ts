@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deveRetomar, escolherPendentes, primeiroNome, rejeicaoExplicita, respostaIncerta, textoAviso, type AvisoSalvo } from "./aviso";
+import { deveRetomar, escolherLegados, escolherPendentes, primeiroNome, rejeicaoExplicita, respostaIncerta, textoAviso, type AvisoSalvo } from "./aviso";
 
 const AGORA = Date.parse("2026-11-10T18:00:00Z");
 const deal = (id: string) => ({
@@ -151,5 +151,50 @@ describe("texto do aviso", () => {
     expect(t).toContain("AB123456789BR");
     expect(t).toContain("pode levar algumas horas para atualizar");
     expect(t).toContain("rastreamento.correios.com.br");
+  });
+});
+
+describe("varredura de legado", () => {
+  it("código sem registro parado há mais de 24h vira legado; recente não", () => {
+    const r = escolherLegados(
+      [v("d1", "f1", "AB123456789BR", "2026-11-09T17:00:00Z"), v("d2", "f1", "CD123456789BR")],
+      new Map(),
+      AGORA,
+    );
+    expect(r).toEqual([{ deal_id: "d1", codigo: "AB123456789BR", account_id: "a1" }]);
+  });
+
+  it("sem updated_at também vira legado", () => {
+    const r = escolherLegados([{ ...v("d1", "f1", "AB123456789BR"), updated_at: null }], new Map(), AGORA);
+    expect(r.map((l) => l.codigo)).toEqual(["AB123456789BR"]);
+  });
+
+  it("não toca código que já tem registro, nem valor inválido ou card sem deal", () => {
+    const semDeal = { ...v("d3", "f1", "EF123456789BR", "2026-11-01T00:00:00Z"), deal: null };
+    const r = escolherLegados(
+      [v("d1", "f1", " ab123456789br ", "2026-11-01T00:00:00Z"), v("d2", "f1", "xyz", "2026-11-01T00:00:00Z"), semDeal],
+      avisado("d1", "AB123456789BR"),
+      AGORA,
+    );
+    expect(r).toHaveLength(0);
+  });
+
+  it("cobre todos os campos de rastreio do card, sem duplicar o mesmo código", () => {
+    const r = escolherLegados(
+      [
+        v("d1", "f1", "AB123456789BR", "2026-11-01T00:00:00Z"),
+        v("d1", "f2", "ZZ999999999BR", "2026-11-01T00:00:00Z"),
+        v("d1", "f2", "AB123456789BR", "2026-11-01T00:00:00Z"),
+      ],
+      new Map(),
+      AGORA,
+    );
+    expect(r.map((l) => l.codigo).sort()).toEqual(["AB123456789BR", "ZZ999999999BR"]);
+  });
+
+  it("depois de virar legado, salvar o card de novo não dispara aviso", () => {
+    const salvo = avisado("d1", "AB123456789BR", { status: "legado", tentativas: 0, tentado_em: null });
+    const r = escolherPendentes([v("d1", "f1", "AB123456789BR")], ordem, salvo, AGORA);
+    expect(r).toHaveLength(0);
   });
 });

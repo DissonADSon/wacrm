@@ -157,6 +157,33 @@ export function escolherPendentes(
   return out;
 }
 
+/**
+ * Códigos sem registro e parados há mais de RECENTE_MS: viram "legado" e nunca
+ * avisam. Sem isso, se o ciclo ficar parado (interruptor off, erro repetido),
+ * acumula estoque, e salvar o card (o formulário regrava os valores e renova
+ * updated_at) dispararia o aviso dias depois. Vale para todo campo de rastreio.
+ */
+export function escolherLegados(
+  valores: ValorAviso[],
+  avisados: Map<string, unknown>,
+  agora: number,
+): { deal_id: string; codigo: string; account_id: string }[] {
+  const vistos = new Set<string>();
+  const out: { deal_id: string; codigo: string; account_id: string }[] = [];
+  for (const v of valores) {
+    if (!v.deal) continue;
+    const codigo = normalizarCodigo(v.value);
+    if (!codigo) continue;
+    const chave = `${v.deal_id}|${codigo}`;
+    if (avisados.has(chave) || vistos.has(chave)) continue;
+    const mexido = v.updated_at ? Date.parse(v.updated_at) : NaN;
+    if (agora - mexido <= RECENTE_MS) continue;
+    vistos.add(chave);
+    out.push({ deal_id: v.deal_id, codigo, account_id: v.deal.account_id });
+  }
+  return out;
+}
+
 function erroCurto(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   return msg.replace(/Bearer\s+\S+/gi, "Bearer ***").slice(0, 200);
@@ -415,7 +442,7 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
       .range(de, ate)
       .returns<{ id: string }[]>(),
   );
-  const vazio = { novos: 0, retomados: 0, enviados: 0, falhas: 0, erros: [] as string[] };
+  const vazio = { novos: 0, retomados: 0, enviados: 0, falhas: 0, legados: 0, erros: [] as string[] };
   if (!campos.linhas.length) return vazio;
   const { data: ligadas, error: errLigadas } = await admin
     .from("deal_tracking_notice_config")
@@ -423,7 +450,6 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
     .eq("ativo", true);
   if (errLigadas) throw new Error(errLigadas.message);
   const ativas = new Set((ligadas ?? []).map((c) => c.account_id as string));
-  if (!ativas.size) return vazio;
   const ids = campos.linhas.map((c) => c.id);
   const ordemCampo = new Map(ids.map((id, i) => [id, i]));
 
@@ -454,9 +480,25 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
       .range(de, ate)
       .returns<AvisoSalvo[]>(),
   );
+  const porChave = new Map(avisos.linhas.map((a) => [`${a.deal_id}|${a.codigo}`, a]));
+
+  // Roda antes de qualquer outra saída (inclusive interruptor desligado e leitura
+  // parcial): o insert não sobrescreve, então ler a menos não estraga nada.
+  const legados = escolherLegados(valores.linhas, porChave, agora);
+  for (let i = 0; i < legados.length; i += 500) {
+    const { error } = await admin
+      .from("deal_tracking_notice")
+      .upsert(
+        legados.slice(i, i + 500).map((l) => ({ ...l, status: "legado", erro: "código parado há mais de 24 h sem aviso" })),
+        { onConflict: "deal_id,codigo", ignoreDuplicates: true },
+      );
+    if (error) throw new Error(error.message);
+  }
+  const base = { ...vazio, legados: legados.length };
+
   // Leitura parcial dos avisos = risco de tratar enviado como novo. Pula a rodada.
   if (!avisos.completa) throw new Error(`leitura incompleta dos avisos (${avisos.linhas.length})`);
-  const porChave = new Map(avisos.linhas.map((a) => [`${a.deal_id}|${a.codigo}`, a]));
+  if (!ativas.size) return base;
 
   const pendentes = escolherPendentes(
     valores.linhas.filter((v) => v.deal && ativas.has(v.deal.account_id)),
@@ -464,13 +506,13 @@ export async function avisarNovosCodigos(admin: SupabaseClient, agora = Date.now
     porChave,
     agora,
   );
-  if (!pendentes.length) return vazio;
+  if (!pendentes.length) return base;
 
   const contas = [...new Set(pendentes.map((p) => p.accountId))];
   const { data: nomes } = await admin.from("accounts").select("id, name").in("id", contas);
   const loja = new Map((nomes ?? []).map((a) => [a.id as string, (a.name as string) || "da loja"]));
 
-  const r = { ...vazio, erros: [] as string[] };
+  const r = { ...base, erros: [] as string[] };
   for (const p of pendentes) {
     try {
       const r0 = p.retomar;
